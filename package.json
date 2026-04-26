@@ -2,6 +2,7 @@
   "name": "venue-insights-platform",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.2",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -11,6 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check",
+    "check:fix": "pnpm format && pnpm lint:fix && pnpm typecheck",
     "smoke:claude": "tsx scripts/smoke-test-claude.ts"
   },
   "dependencies": {
