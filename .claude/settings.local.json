@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npm ls -g pnpm 2>$null; \\(Get-Command pnpm -ErrorAction SilentlyContinue\\) | Format-List Source; corepack --version 2>&1)"
+    ]
+  }
+}

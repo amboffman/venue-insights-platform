@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check",
     "check:fix": "pnpm format && pnpm lint:fix && pnpm typecheck",
-    "smoke:claude": "tsx scripts/smoke-test-claude.ts"
+    "smoke:claude": "tsx scripts/smoke-test-claude.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -36,6 +38,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",
-    "typescript-eslint": "^8.59.0"
+    "typescript-eslint": "^8.59.0",
+    "vitest": "^4.1.7"
   }
 }
