@@ -6,6 +6,8 @@ linked ADR under [`adr/`](./adr/). See
 
 | #   | Date       | Decision                                                                                      | ADR                                                       |
 | --- | ---------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| —   | 2026-07-01 | **Roadmap re-baselined to Sept 1** with weekly slices, dated go/no-go trim checkpoints, and a trim ladder biased toward eval/observability depth (MCP + charts cut first). Budget: 5–8 hrs/week. See [ROADMAP.md](./ROADMAP.md) — the source of truth for build order. | _n/a (planning)_ |
+| —   | 2026-07-01 | **Mixed-ownership tutor mode**: Claude implements spine/infrastructure; author personally implements designated slices (one eval scorer, one MCP tool wrapper); every slice ends with an explain-back. Contract in [AGENTS.md](../AGENTS.md). | _n/a (process)_ |
 | —   | 2026-06-17 | Use ADRs + this log to record decisions (project is built to be explained in interviews).     | [0000](./adr/0000-record-architecture-decisions.md)      |
 | —   | 2026-06-17 | **Synthetic seeded Postgres** (on Supabase) backs the intelligence tools — not a live API. Deterministic, no rate limits, reproducible evals and demos. | _planned: ADR-001 (data model)_ |
 | —   | 2026-06-17 | **DIY TypeScript eval harness + OpenTelemetry** for the eval/observability layer — not Braintrust. Maximizes "I built and can explain this." Evals run through Vitest. | _planned_ |
