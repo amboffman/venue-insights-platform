@@ -54,9 +54,10 @@ decision was made, checkbox updated here, and the explain-back conversation
 - [x] ADR-001: data model + Drizzle confirmation (entities: brands,
       locations, reviews, daily_metrics; single-tenant; discuss what a
       locator-app veteran would recognize as realistic)
-- [ ] Supabase project created; `DATABASE_URL` etc. in `.env.local`
+- [x] Supabase project created; `DATABASE_URL` etc. in `.env.local`
       (author does this — account setup can't be delegated), then
-      `pnpm db:migrate && pnpm seed` against it
+      `pnpm db:migrate && pnpm seed` against it (seeded 2026-07-02:
+      5 brands / 50 locations / 733 reviews / 17,330 metric rows)
 - [x] Drizzle schema + migrations for the core entities
 - [x] Deterministic seed script (`pnpm seed`, seeded RNG, ~5 brands /
       ~50 locations / reviews + 12 months of daily metrics)
