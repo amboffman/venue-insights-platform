@@ -1,30 +1,21 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
 import type { Database } from "../db/client";
-import { SEED_END_DATE, SEED_START_DATE } from "../db/seed-data";
-import { getToolSpecs, runTool } from "../mcp/tools";
+import {
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_MAX_TOOL_ITERATIONS,
+  DEFAULT_MODEL,
+  SYSTEM_PROMPT,
+  anthropicTools,
+  executeToolUse,
+  type ToolCallRecord,
+} from "./shared";
 
-// The hand-rolled tool-use loop (ADR-002): question → Claude → tool calls →
-// tool results → grounded answer. Non-streaming; the Week 3 streaming route
-// builds on the same shape.
+// The hand-rolled non-streaming tool-use loop (ADR-002): question → Claude →
+// tool calls → tool results → grounded answer. Used by the terminal harness
+// and the Week 5 eval runner; the chat route uses stream-loop.ts.
 
-export const DEFAULT_MODEL = "claude-sonnet-5";
-const DEFAULT_MAX_TOKENS = 16000;
-// Guard against a model that never stops calling tools; generous enough for
-// legitimate multi-step questions (search → details → compare).
-const DEFAULT_MAX_TOOL_ITERATIONS = 8;
-
-// Fixed and deterministic — no clock, no per-request content — so eval runs
-// are reproducible and the prompt prefix stays cacheable.
-const SYSTEM_PROMPT =
-  "You are a business-intelligence assistant for a multi-location franchise " +
-  "portfolio (5 brands, 50 US locations). Answer questions using the " +
-  "provided tools. Ground every number in tool results — never estimate or " +
-  "invent values, and say so plainly when the data cannot answer the " +
-  "question. Monetary values from tools are integer cents; present them in " +
-  `dollars. Daily metrics cover ${SEED_START_DATE} through ${SEED_END_DATE}; ` +
-  `treat ${SEED_END_DATE} as today when interpreting phrases like "last ` +
-  'month". Keep answers concise and lead with the direct answer.';
+export type { ToolCallRecord } from "./shared";
 
 /** The narrow slice of the Anthropic client the loop needs — tests inject a
  * fake; production injects a real `new Anthropic()`. */
@@ -45,13 +36,6 @@ export interface AskOptions {
   maxToolIterations?: number;
 }
 
-export interface ToolCallRecord {
-  name: string;
-  input: unknown;
-  ok: boolean;
-  error?: string;
-}
-
 export interface AskResult {
   answer: string;
   toolCalls: ToolCallRecord[];
@@ -59,14 +43,6 @@ export interface AskResult {
   stopReason: Anthropic.Message["stop_reason"];
   /** number of API round-trips made */
   iterations: number;
-}
-
-function anthropicTools(): Anthropic.Tool[] {
-  return getToolSpecs().map((spec) => ({
-    name: spec.name,
-    description: spec.description,
-    input_schema: spec.inputSchema as Anthropic.Tool.InputSchema,
-  }));
 }
 
 export async function askQuestion(
@@ -117,21 +93,9 @@ export async function askQuestion(
 
     const results: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
-      const result = await runTool(deps.db, block.name, block.input);
-      toolCalls.push({
-        name: block.name,
-        input: block.input,
-        ok: result.ok,
-        ...(result.ok ? {} : { error: result.error }),
-      });
-      // Failures go back to the model as is_error tool results so it can
-      // retry with fixed arguments or explain the limitation (ADR-002).
-      results.push({
-        type: "tool_result",
-        tool_use_id: block.id,
-        content: result.ok ? JSON.stringify(result.output) : result.error,
-        ...(result.ok ? {} : { is_error: true }),
-      });
+      const executed = await executeToolUse(deps.db, block);
+      toolCalls.push(executed.record);
+      results.push(executed.resultBlock);
     }
 
     // All results for one assistant turn go back in ONE user message —
