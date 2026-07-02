@@ -106,6 +106,14 @@ const BRAND_SPECS: BrandSpec[] = [
   },
 ];
 
+// First day of the metrics window — everything between this and SEED_END_DATE
+// (inclusive) has data. Exported so tool descriptions can state the window.
+export const SEED_START_DATE = isoDate(utcMsOf(SEED_END_DATE) - (METRIC_DAYS - 1) * DAY_MS);
+
+// The valid brand-slug vocabulary; tool input schemas expose it as an enum so
+// the model can only pass slugs that exist.
+export const BRAND_SLUGS = BRAND_SPECS.map((spec) => spec.slug);
+
 const LOCATIONS_PER_BRAND = 10;
 
 interface CitySpec {
