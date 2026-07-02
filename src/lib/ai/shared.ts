@@ -38,6 +38,8 @@ export interface ToolCallRecord {
   input: unknown;
   ok: boolean;
   error?: string;
+  /** typed domain output on success — the eval scorers ground answers in it */
+  output?: unknown;
 }
 
 export interface ExecutedToolUse {
@@ -57,7 +59,7 @@ export async function executeToolUse(
       name: block.name,
       input: block.input,
       ok: result.ok,
-      ...(result.ok ? {} : { error: result.error }),
+      ...(result.ok ? { output: result.output } : { error: result.error }),
     },
     resultBlock: {
       type: "tool_result",

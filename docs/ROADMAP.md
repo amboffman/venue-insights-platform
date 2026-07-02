@@ -106,12 +106,14 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 5 (Jul 29–Aug 4) — Eval harness v1 👤 author-owned slice
 
-- [ ] Golden dataset: ~25 cases (question → expected tool calls, expected
-      key facts) generated from the deterministic seed
-- [ ] Deterministic scorers: tool-selection correctness, argument
-      correctness, groundedness (numbers in the answer appear in tool results)
+- [x] Golden dataset: ~25 cases (question → expected tool calls, expected
+      key facts) generated from the deterministic seed (24 cases, ADR-0005)
+- [ ] Deterministic scorers: tool-selection correctness ✓, argument
+      correctness ✓, groundedness (author-owned — brief + TDD tests ready)
 - [ ] **Author implements one scorer end-to-end; Claude reviews**
-- [ ] Vitest eval runner + a report artifact (JSON or markdown) per run
+      (groundedness — see LEARNING.md "Week 5: YOUR build")
+- [x] Vitest eval runner + a report artifact (JSON or markdown) per run
+      (`pnpm eval` → eval-reports/run-*.{json,md}; never in CI)
 
 **Demo:** `pnpm eval` → scored report showing where the agent fails.
 

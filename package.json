@@ -20,7 +20,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "seed": "tsx scripts/seed.ts",
-    "ask": "tsx scripts/ask.ts"
+    "ask": "tsx scripts/ask.ts",
+    "eval": "vitest run --config vitest.evals.config.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

@@ -103,6 +103,8 @@ describe("askQuestion", () => {
         name: "search_locations",
         input: { city: "Austin", limit: 100 },
         ok: true,
+        // typed domain output is recorded for the eval scorers (Week 5)
+        output: expect.any(Array),
       },
     ]);
     expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 100 });
