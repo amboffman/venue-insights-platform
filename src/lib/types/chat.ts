@@ -8,6 +8,12 @@ export interface ChatTurn {
   content: string;
 }
 
+// The transcript limits are part of the wire contract: the client trims and
+// truncates to these BEFORE sending, and the route validates with the SAME
+// constants — one source of truth, so the two layers cannot drift apart.
+export const MAX_CHAT_TURNS = 20;
+export const MAX_TURN_CHARS = 8000;
+
 export type ChatStreamEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; name: string; input: unknown }

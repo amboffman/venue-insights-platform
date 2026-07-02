@@ -15,7 +15,21 @@ import { BRAND_SLUGS, SEED_END_DATE, SEED_START_DATE } from "../db/seed-data";
 // schemas are the single source of truth — the same schema validates incoming
 // arguments at runtime and is converted to the JSON Schema the model sees.
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be an ISO date (YYYY-MM-DD)");
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "must be an ISO date (YYYY-MM-DD)")
+  // The regex alone admits impossible dates (2026-06-31), which would reach
+  // Postgres and come back as an opaque driver error; a Date.UTC round-trip
+  // rejects them here, where the model gets a clean self-correctable message.
+  .refine((value) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(Date.UTC(year!, month! - 1, day!));
+    return (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month! - 1 &&
+      date.getUTCDate() === day
+    );
+  }, "must be a real calendar date");
 
 const brandSlug = z.enum(BRAND_SLUGS as [string, ...string[]]).describe("Brand identifier (slug)");
 
@@ -44,7 +58,9 @@ const searchLocationsTool = defineTool({
     "status, name substring). Returns location summaries including the " +
     "numeric id needed by the other tools. The dataset is a fixed synthetic " +
     "portfolio: 5 brands, 50 locations across 10 US cities. Call this first " +
-    "when you need location ids.",
+    "when you need location ids. Results are capped at `limit` (default 20) " +
+    "with no truncation marker — pass a higher limit when counting or when " +
+    "a filter could match more than 20 locations.",
   inputSchema: z.object({
     query: z.string().optional().describe("Case-insensitive substring match on location name"),
     brandSlug: brandSlug.optional(),
@@ -82,7 +98,11 @@ const aggregateMetricsTool = defineTool({
     from: isoDate.describe("Range start (inclusive)"),
     to: isoDate.describe("Range end (inclusive)"),
     brandSlug: brandSlug.optional(),
-    locationIds: z.array(z.number().int()).optional(),
+    locationIds: z
+      .array(z.number().int())
+      .min(1)
+      .optional()
+      .describe("Specific location ids; omit entirely to include all locations"),
   }),
   handler: (db, input) => aggregateMetrics(db, input),
 });
@@ -91,9 +111,10 @@ const compareLocationsTool = defineTool({
   name: "compare_locations",
   description:
     "Compare two or more locations side by side over an inclusive date " +
-    "range: total revenue (integer cents), transactions, foot traffic, " +
-    "average ticket, and average review rating per location, sorted by " +
-    "revenue (highest first). " +
+    "range: total revenue (integer cents), transactions, foot traffic, and " +
+    "average ticket per location, sorted by revenue (highest first). Also " +
+    "includes each location's LIFETIME average review rating — ratings are " +
+    "not limited to the date range. " +
     DATA_WINDOW,
   inputSchema: z.object({
     locationIds: z
@@ -108,7 +129,7 @@ const compareLocationsTool = defineTool({
 
 // Type-erased registry: schema/handler pairing is enforced per tool above,
 // runTool re-validates at the boundary so erasure is safe.
-const TOOLS: ToolDefinition<z.ZodType>[] = [
+const TOOLS = [
   searchLocationsTool,
   getLocationDetailsTool,
   aggregateMetricsTool,

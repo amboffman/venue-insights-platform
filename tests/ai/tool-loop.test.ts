@@ -3,85 +3,25 @@
 // database: the model responses are canned, but every tool execution runs the
 // real validate → SQL → typed-output path against the real seed data.
 import type Anthropic from "@anthropic-ai/sdk";
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { ClaudeClient } from "@/lib/ai/tool-loop";
 import { askQuestion } from "@/lib/ai/tool-loop";
 import type { Database } from "@/lib/db/client";
-import * as schema from "@/lib/db/schema";
 import { generateSeedData } from "@/lib/db/seed-data";
 import type { LocationSummary } from "@/lib/types/domain";
+import { fakeClient, message, textBlock, toolUseBlock } from "../helpers/anthropic-fixtures";
+import { createSeededDb, type SeededDb } from "../helpers/seeded-db";
 
 const seed = generateSeedData();
+let seeded: SeededDb;
 let db: Database;
 
 beforeAll(async () => {
-  const client = new PGlite();
-  const pglite = drizzle(client, { schema });
-  await migrate(pglite, { migrationsFolder: "src/lib/db/migrations" });
-  db = pglite as unknown as Database;
-
-  for (const [table, rows] of [
-    [schema.brands, seed.brands],
-    [schema.locations, seed.locations],
-    [schema.reviews, seed.reviews],
-    [schema.dailyMetrics, seed.dailyMetrics],
-  ] as const) {
-    for (let i = 0; i < rows.length; i += 2000) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await pglite.insert(table as any).values(rows.slice(i, i + 2000) as any);
-    }
-  }
+  seeded = await createSeededDb();
+  db = seeded.db;
 }, 120_000);
 
-function message(
-  content: Anthropic.ContentBlock[],
-  stopReason: Anthropic.Message["stop_reason"],
-): Anthropic.Message {
-  return {
-    id: "msg_test",
-    type: "message",
-    role: "assistant",
-    model: "claude-sonnet-5",
-    content,
-    stop_reason: stopReason,
-    stop_sequence: null,
-    usage: { input_tokens: 100, output_tokens: 50 } as Anthropic.Usage,
-  } as Anthropic.Message;
-}
-
-function textBlock(text: string): Anthropic.TextBlock {
-  return { type: "text", text, citations: null } as Anthropic.TextBlock;
-}
-
-function toolUseBlock(id: string, name: string, input: unknown): Anthropic.ToolUseBlock {
-  return { type: "tool_use", id, name, input } as Anthropic.ToolUseBlock;
-}
-
-/** Fake client that returns queued responses and records every request. */
-function fakeClient(responses: Anthropic.Message[]): {
-  client: ClaudeClient;
-  requests: Anthropic.MessageCreateParamsNonStreaming[];
-} {
-  const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
-  const queue = [...responses];
-  return {
-    requests,
-    client: {
-      messages: {
-        create: (params) => {
-          requests.push(params);
-          const next = queue.shift();
-          if (!next) throw new Error("fake client ran out of responses");
-          return Promise.resolve(next);
-        },
-      },
-    },
-  };
-}
+afterAll(() => seeded.close());
 
 describe("askQuestion", () => {
   it("runs a tool call and returns the grounded answer", async () => {
@@ -188,7 +128,7 @@ describe("askQuestion", () => {
     expect(result.stopReason).toBe("tool_use");
   });
 
-  it("resumes after pause_turn by re-sending the assistant turn", async () => {
+  it("resumes after pause_turn, keeping text from before the pause", async () => {
     const { client, requests } = fakeClient([
       message([textBlock("Partial…")], "pause_turn"),
       message([textBlock("Done.")], "end_turn"),
@@ -196,8 +136,26 @@ describe("askQuestion", () => {
 
     const result = await askQuestion({ client, db }, "Long task");
 
-    expect(result.answer).toBe("Done.");
+    // Resumed responses contain only the continuation — the pre-pause text
+    // must survive into the final answer.
+    expect(result.answer).toBe("Partial…\nDone.");
     expect(requests[1]!.messages).toHaveLength(2);
     expect(requests[1]!.messages[1]!.role).toBe("assistant");
+  });
+
+  it("does not execute tools requested on the final permitted round", async () => {
+    const { client } = fakeClient([
+      message([toolUseBlock("tu_1", "search_locations", {})], "tool_use"),
+      message([toolUseBlock("tu_2", "search_locations", {})], "tool_use"),
+    ]);
+
+    const result = await askQuestion({ client, db }, "Loop", {
+      maxToolIterations: 2,
+    });
+
+    // Round 1 executes; round 2's request happens but its tools are skipped —
+    // their results could never be sent back to the model.
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.stopReason).toBe("tool_use");
   });
 });

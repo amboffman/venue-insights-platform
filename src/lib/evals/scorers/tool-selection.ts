@@ -12,20 +12,31 @@ export const toolSelectionScorer: Scorer = {
       return { score: 1, details: ["no tool expectations"] };
     }
 
-    const calledNames = new Set(transcript.toolCalls.map((c) => c.name));
+    // Multiset matching: a case expecting the same tool twice (e.g. one
+    // aggregate_metrics per brand) needs two distinct calls to satisfy it —
+    // set membership would let one call count for both.
+    const remainingCalls = new Map<string, number>();
+    for (const call of transcript.toolCalls) {
+      remainingCalls.set(call.name, (remainingCalls.get(call.name) ?? 0) + 1);
+    }
+
     const details: string[] = [];
     let hit = 0;
 
     for (const expected of evalCase.expectedTools) {
-      if (calledNames.has(expected.name)) {
+      const available = remainingCalls.get(expected.name) ?? 0;
+      if (available > 0) {
         hit++;
+        remainingCalls.set(expected.name, available - 1);
       } else {
-        details.push(`expected tool not called: ${expected.name}`);
+        details.push(`expected tool not called (enough times): ${expected.name}`);
       }
     }
 
     const expectedNames = new Set(evalCase.expectedTools.map((t) => t.name));
-    const extras = [...calledNames].filter((name) => !expectedNames.has(name));
+    const extras = [...new Set(transcript.toolCalls.map((c) => c.name))].filter(
+      (name) => !expectedNames.has(name),
+    );
     if (extras.length > 0) {
       details.push(`extra tools called (not penalized): ${extras.join(", ")}`);
     }

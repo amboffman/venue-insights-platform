@@ -7,9 +7,20 @@ import {
   DEFAULT_MODEL,
   SYSTEM_PROMPT,
   anthropicTools,
-  executeToolUse,
+  executeToolUses,
   type ToolCallRecord,
 } from "./shared";
+
+// pause_turn resumes don't consume the tool budget, but a pathological
+// pause loop must still terminate.
+const MAX_PAUSE_ROUNDS = 8;
+
+function textOf(content: Anthropic.Message["content"]): string {
+  return content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+}
 
 // The hand-rolled non-streaming tool-use loop (ADR-002): question → Claude →
 // tool calls → tool results → grounded answer. Used by the terminal harness
@@ -61,8 +72,12 @@ export async function askQuestion(
 
   let response: Anthropic.Message | null = null;
   let iterations = 0;
+  let pauseRounds = 0;
+  // Text emitted before a pause_turn — resumed responses contain only the
+  // continuation, so this must be prepended to the final answer.
+  let pausedText = "";
 
-  while (iterations < maxToolIterations) {
+  while (iterations - pauseRounds < maxToolIterations && pauseRounds <= MAX_PAUSE_ROUNDS) {
     iterations++;
     response = await deps.client.messages.create({
       model,
@@ -77,11 +92,18 @@ export async function askQuestion(
     // Server-side pause: append the assistant turn as-is and let the API
     // resume where it left off.
     if (response.stop_reason === "pause_turn") {
+      pauseRounds++;
+      const text = textOf(response.content);
+      if (text) pausedText += text + "\n";
       messages.push({ role: "assistant", content: response.content });
       continue;
     }
 
     if (response.stop_reason !== "tool_use") break;
+
+    // Executing tools we can never report back (budget exhausted) is wasted
+    // DB work and misleading UI — stop before running them.
+    if (iterations - pauseRounds >= maxToolIterations) break;
 
     // Append the FULL assistant content (including thinking blocks — the API
     // requires them back verbatim on the next request).
@@ -91,23 +113,15 @@ export async function askQuestion(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
     );
 
-    const results: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of toolUseBlocks) {
-      const executed = await executeToolUse(deps.db, block);
-      toolCalls.push(executed.record);
-      results.push(executed.resultBlock);
-    }
+    const executed = await executeToolUses(deps.db, toolUseBlocks);
+    toolCalls.push(...executed.map((e) => e.record));
 
     // All results for one assistant turn go back in ONE user message —
     // splitting them across messages breaks parallel tool use.
-    messages.push({ role: "user", content: results });
+    messages.push({ role: "user", content: executed.map((e) => e.resultBlock) });
   }
 
-  const answer =
-    response?.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("\n") ?? "";
+  const answer = pausedText + (response ? textOf(response.content) : "");
 
   return {
     answer,

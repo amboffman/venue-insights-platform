@@ -44,9 +44,15 @@ export function reportToMarkdown(report: EvalReport): string {
 
   let anyFailure = false;
   for (const c of report.cases) {
+    // score === null means the scorer didn't run (errored or not yet
+    // implemented) — those details MUST surface here, or a broken scorer is
+    // indistinguishable from a passing one.
     const misses = Object.entries(c.scores)
-      .filter(([, s]) => s.score !== null && s.score < 1 && s.details.length > 0)
+      .filter(([, s]) => (s.score === null || s.score < 1) && s.details.length > 0)
       .flatMap(([name, s]) => s.details.map((d) => `  - [${name}] ${d}`));
+    if (c.error) {
+      misses.unshift(`  - [pipeline] ${c.error}`);
+    }
     if (misses.length > 0) {
       anyFailure = true;
       lines.push(`### ${c.caseId}`, "", `> ${c.question}`, "", ...misses, "");

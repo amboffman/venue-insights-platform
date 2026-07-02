@@ -30,7 +30,26 @@ describe("agent eval", () => {
     // concurrent within the file (maxConcurrency in the eval config) — a
     // full serial run of 24 cases would take several minutes.
     it.concurrent(evalCase.id, async () => {
-      const result = await runCase(deps, evalCase);
+      let result;
+      try {
+        result = await runCase(deps, evalCase);
+      } catch (error) {
+        // A pipeline failure (API 529, timeout) still gets a row in the
+        // report — a silently missing case would misrepresent the run.
+        results.push({
+          caseId: evalCase.id,
+          question: evalCase.question,
+          answer: "",
+          toolCalls: [],
+          scores: {},
+          usage: { inputTokens: 0, outputTokens: 0 },
+          durationMs: 0,
+          iterations: 0,
+          stopReason: null,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
       results.push(result);
       // Cases don't hard-fail on low scores — the report is the deliverable
       // ("show where the agent fails"). Only a broken pipeline fails the run.

@@ -6,8 +6,24 @@ import type { Scorer } from "../types";
 // score the fraction of pinned keys matched. Keys the case doesn't pin are
 // never compared — you can only score what the question determines.
 
+// Key-order-independent serialization: {from, to} and {to, from} must
+// compare equal, or object-valued args would produce false misses.
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
 function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return stableStringify(a) === stableStringify(b);
 }
 
 export const argumentCorrectnessScorer: Scorer = {

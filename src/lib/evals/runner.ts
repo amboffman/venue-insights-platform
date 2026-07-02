@@ -3,7 +3,14 @@ import { DEFAULT_MODEL } from "../ai/shared";
 import { argumentCorrectnessScorer } from "./scorers/argument-correctness";
 import { groundednessScorer } from "./scorers/groundedness";
 import { toolSelectionScorer } from "./scorers/tool-selection";
-import type { CaseResult, EvalCase, EvalReport, Scorer, ScorerResult } from "./types";
+import type {
+  AgentTranscript,
+  CaseResult,
+  EvalCase,
+  EvalReport,
+  Scorer,
+  ScorerResult,
+} from "./types";
 
 export const SCORERS: Scorer[] = [
   toolSelectionScorer,
@@ -16,7 +23,7 @@ export const SCORERS: Scorer[] = [
 function applyScorer(
   scorer: Scorer,
   evalCase: EvalCase,
-  transcript: { answer: string; toolCalls: CaseResult["toolCalls"] },
+  transcript: AgentTranscript,
 ): ScorerResult {
   try {
     return scorer.score(evalCase, transcript);
@@ -50,7 +57,10 @@ export async function runCase(deps: AskDeps, evalCase: EvalCase): Promise<CaseRe
   };
 }
 
-export function buildReport(cases: CaseResult[]): EvalReport {
+export function buildReport(unsorted: CaseResult[]): EvalReport {
+  // Concurrent cases complete in nondeterministic order — sort by id so
+  // run-over-run report diffs stay meaningful.
+  const cases = [...unsorted].sort((a, b) => a.caseId.localeCompare(b.caseId));
   const meanScores: Record<string, number> = {};
   for (const scorer of SCORERS) {
     const ran = cases

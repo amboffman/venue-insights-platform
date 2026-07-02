@@ -25,12 +25,17 @@ export const SYSTEM_PROMPT =
   `treat ${SEED_END_DATE} as today when interpreting phrases like "last ` +
   'month". Keep answers concise and lead with the direct answer.';
 
+// Memoized: the tool set is static, so the zod→JSON-Schema derivation runs
+// once per process instead of once per request.
+let cachedTools: Anthropic.Tool[] | undefined;
+
 export function anthropicTools(): Anthropic.Tool[] {
-  return getToolSpecs().map((spec) => ({
+  cachedTools ??= getToolSpecs().map((spec) => ({
     name: spec.name,
     description: spec.description,
     input_schema: spec.inputSchema as Anthropic.Tool.InputSchema,
   }));
+  return cachedTools;
 }
 
 export interface ToolCallRecord {
@@ -43,10 +48,10 @@ export interface ToolCallRecord {
 }
 
 export interface ExecutedToolUse {
+  /** single source of truth for the call, including output on success */
   record: ToolCallRecord;
   /** what goes back to the model — is_error on failure (ADR-002) */
   resultBlock: Anthropic.ToolResultBlockParam;
-  output?: unknown;
 }
 
 export async function executeToolUse(
@@ -67,6 +72,16 @@ export async function executeToolUse(
       content: result.ok ? JSON.stringify(result.output) : result.error,
       ...(result.ok ? {} : { is_error: true }),
     },
-    ...(result.ok ? { output: result.output } : {}),
   };
+}
+
+/** Execute all tool_use blocks of one assistant turn concurrently — they are
+ * read-only queries, and Anthropic guidance is to run parallel calls in
+ * parallel. Result order matches block order, so the single user message of
+ * tool_results keeps its pairing. */
+export function executeToolUses(
+  db: Database,
+  blocks: Anthropic.ToolUseBlock[],
+): Promise<ExecutedToolUse[]> {
+  return Promise.all(blocks.map((block) => executeToolUse(db, block)));
 }

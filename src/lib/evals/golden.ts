@@ -19,8 +19,6 @@ const H1_TO = "2026-06-30";
 const JUNE_FROM = "2026-06-01";
 const JUNE_TO = "2026-06-30";
 
-const brandById = new Map(seed.brands.map((b) => [b.id!, b]));
-
 function sumMetrics(locationIds: Set<number>, from: string, to: string) {
   return seed.dailyMetrics
     .filter((m) => locationIds.has(m.locationId) && m.date >= from && m.date <= to)
@@ -74,7 +72,7 @@ for (const l of openLocations) {
 const [topBrandId, topBrandOpen] = [...openByBrand.entries()].sort(
   (a, b) => b[1].length - a[1].length,
 )[0]!;
-const topBrand = brandById.get(topBrandId)!;
+const topBrand = seed.brands.find((b) => b.id === topBrandId)!;
 
 const secondBrand = seed.brands.find((b) => b.id !== topBrand.id)!;
 const secondBrandLocations = seed.locations.filter((l) => l.brandId === secondBrand.id);
@@ -106,6 +104,10 @@ export function buildGoldenCases(): EvalCase[] {
       expectedFacts: [countFact("TX locations", txLocations.length)],
     },
     {
+      // DIAGNOSTIC: answerable only if the model raises `limit` above the
+      // default 20 (the tool description now tells it to when counting) —
+      // this case measures exactly that behavior, so expect it to fail on
+      // weaker models rather than treating a red row as a harness bug.
       id: "search-total-count",
       question: "How many locations do we have overall, across all brands?",
       expectedTools: [{ name: "search_locations" }],

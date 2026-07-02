@@ -53,6 +53,8 @@ export interface CaseResult {
   durationMs: number;
   iterations: number;
   stopReason: string | null;
+  /** set when the pipeline itself failed (API error) — no scores exist */
+  error?: string;
 }
 
 export interface EvalReport {

@@ -1,36 +1,22 @@
 // @vitest-environment node
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { Database } from "@/lib/db/client";
-import * as schema from "@/lib/db/schema";
 import { SEED_END_DATE, SEED_START_DATE, generateSeedData } from "@/lib/db/seed-data";
 import { TOOL_NAMES, getToolSpecs, runTool } from "@/lib/mcp/tools";
 import type { LocationSummary, MetricsAggregate } from "@/lib/types/domain";
+import { createSeededDb, type SeededDb } from "../helpers/seeded-db";
 
 const seed = generateSeedData();
+let seeded: SeededDb;
 let db: Database;
 
 beforeAll(async () => {
-  const client = new PGlite();
-  const pglite = drizzle(client, { schema });
-  await migrate(pglite, { migrationsFolder: "src/lib/db/migrations" });
-  db = pglite as unknown as Database;
-
-  for (const [table, rows] of [
-    [schema.brands, seed.brands],
-    [schema.locations, seed.locations],
-    [schema.reviews, seed.reviews],
-    [schema.dailyMetrics, seed.dailyMetrics],
-  ] as const) {
-    for (let i = 0; i < rows.length; i += 2000) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await pglite.insert(table as any).values(rows.slice(i, i + 2000) as any);
-    }
-  }
+  seeded = await createSeededDb();
+  db = seeded.db;
 }, 120_000);
+
+afterAll(() => seeded.close());
 
 describe("getToolSpecs", () => {
   it("exposes all four tools with JSON Schema inputs", () => {
@@ -94,6 +80,24 @@ describe("runTool", () => {
       brandSlug: "starbucks",
     });
     expect(result.ok).toBe(false);
+  });
+
+  it("rejects an empty locationIds array on aggregate_metrics", async () => {
+    const result = await runTool(db, "aggregate_metrics", {
+      from: SEED_START_DATE,
+      to: SEED_END_DATE,
+      locationIds: [],
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects calendar-invalid dates at the schema boundary", async () => {
+    const result = await runTool(db, "aggregate_metrics", {
+      from: "2026-06-31",
+      to: "2026-07-15",
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { error: string }).error).toContain("calendar");
   });
 
   it("rejects compare_locations with fewer than two ids", async () => {

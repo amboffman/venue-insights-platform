@@ -24,9 +24,16 @@ export async function* readNdjsonEvents(
         newlineIndex = buffer.indexOf("\n");
       }
     }
+    // Flush the decoder: a multi-byte UTF-8 character split at the final
+    // chunk boundary is still buffered inside it.
+    buffer += decoder.decode();
     const tail = buffer.trim();
     if (tail) yield JSON.parse(tail) as ChatStreamEvent;
   } finally {
+    // Cancel (not just release): if the consumer exits early, this tears the
+    // HTTP body down so the server's stream cancel fires and the tool loop
+    // stops. On a fully-read stream it's a no-op.
+    await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
