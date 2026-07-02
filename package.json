@@ -16,7 +16,10 @@
     "test:watch": "vitest",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "check:fix": "pnpm format && pnpm lint:fix && pnpm typecheck",
-    "smoke:claude": "tsx scripts/smoke-test-claude.ts"
+    "smoke:claude": "tsx scripts/smoke-test-claude.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
