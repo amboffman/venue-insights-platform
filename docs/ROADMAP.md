@@ -81,11 +81,13 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 3 (Jul 15–21) — Streaming chat + deploy ⚑ go/no-go
 
-- [ ] Streaming route handler (read the vendored Next 16 docs first —
-      streaming/route-handler APIs changed from training data)
-- [ ] Chat page: message list, input, streamed assistant responses, visible
+- [x] Streaming route handler (read the vendored Next 16 docs first —
+      streaming/route-handler APIs changed from training data) — NDJSON
+      typed events, ADR-0003
+- [x] Chat page: message list, input, streamed assistant responses, visible
       tool-call activity (even if just "Searching locations…")
-- [ ] Deploy to Vercel; add `pnpm build` to CI
+- [ ] Deploy to Vercel (author connects repo + env vars); `pnpm build` added
+      to CI ✓
 - [ ] **Checkpoint (Jul 21):** if the spine is not deployed, cut Week 7 (MCP)
       now and shift everything up one week.
 
