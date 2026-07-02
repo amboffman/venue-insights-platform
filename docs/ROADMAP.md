@@ -66,14 +66,16 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 2 (Jul 8–14) — Tools + tool-calling loop
 
-- [ ] 4 tools in `lib/mcp` as pure functions with schema-validated inputs:
+- [x] 4 tools in `lib/mcp` as pure functions with schema-validated inputs:
       `search_locations`, `get_location_details`, `aggregate_metrics`,
       `compare_locations`
-- [ ] ADR-002: raw Anthropic SDK vs Vercel AI SDK (record the learning
+- [x] ADR-002: raw Anthropic SDK vs Vercel AI SDK (record the learning
       rationale and what it costs us)
-- [ ] Non-streaming tool-use loop in `lib/ai`: question → Claude → tool
+- [x] Non-streaming tool-use loop in `lib/ai`: question → Claude → tool
       calls → tool results → grounded answer; tested with a mocked client
-- [ ] Throwaway harness (script or route) to ask questions from the terminal
+- [x] Throwaway harness (script or route) to ask questions from the terminal
+      (`pnpm ask "…"` — needs `DATABASE_URL` + `ANTHROPIC_API_KEY` for the
+      live demo)
 
 **Demo:** plain-English question → grounded, tool-backed answer in the terminal.
 

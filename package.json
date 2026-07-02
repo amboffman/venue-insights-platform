@@ -19,7 +19,8 @@
     "smoke:claude": "tsx scripts/smoke-test-claude.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "ask": "tsx scripts/ask.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
