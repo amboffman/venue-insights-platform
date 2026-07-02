@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { readNdjsonEvents } from "@/components/chat/read-ndjson";
+import { renderToolResult } from "@/components/chat/tool-views/registry";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,8 @@ interface ToolActivity {
   name: string;
   /** null while running */
   ok: boolean | null;
+  /** successful tool output — rendered through the tool-view registry */
+  output?: unknown;
 }
 
 interface DisplayMessage {
@@ -133,7 +136,10 @@ export function Chat() {
           case "tool_result":
             updateAssistant((m) => {
               const running = m.activities.findLast((a) => a.name === event.name && a.ok === null);
-              if (running) running.ok = event.ok;
+              if (running) {
+                running.ok = event.ok;
+                if (event.ok) running.output = event.output;
+              }
             });
             break;
           case "done":
@@ -182,46 +188,65 @@ export function Chat() {
           </div>
         )}
 
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={cn(
-              "mx-auto flex w-full max-w-2xl",
-              message.role === "user" ? "justify-end" : "justify-start",
-            )}
-          >
+        {messages.map((message, index) => {
+          // Successful tool outputs render through the deterministic registry
+          // (ADR-0004); tools without a view keep only their chip.
+          const views = message.activities
+            .filter((a) => a.ok === true && a.output !== undefined)
+            .map((a, i) => ({
+              key: `${a.name}-${i}`,
+              node: renderToolResult(a.name, a.output),
+            }))
+            .filter((view) => view.node !== null);
+          return (
             <div
+              key={index}
               className={cn(
-                "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm",
-                message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted",
+                "mx-auto flex w-full max-w-2xl",
+                message.role === "user" ? "justify-end" : "justify-start",
               )}
             >
-              {message.activities.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {message.activities.map((activity, i) => (
-                    <ActivityChip key={i} activity={activity} />
-                  ))}
-                </div>
-              )}
-              {message.content && <p className="whitespace-pre-wrap">{message.content}</p>}
-              {message.role === "assistant" &&
-                !message.content &&
-                !message.error &&
-                message.activities.length === 0 && (
-                  <p className="animate-pulse text-muted-foreground">Thinking…</p>
+              <div
+                className={cn(
+                  "rounded-2xl px-4 py-2.5 text-sm",
+                  views.length > 0 ? "w-full" : "max-w-[85%]",
+                  message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted",
                 )}
-              {message.error && (
-                <p className="text-destructive">Something went wrong: {message.error}</p>
-              )}
-              {message.usage && (
-                <p className="mt-1.5 text-[10px] text-muted-foreground">
-                  {message.usage.inputTokens.toLocaleString()} in /{" "}
-                  {message.usage.outputTokens.toLocaleString()} out tokens
-                </p>
-              )}
+              >
+                {message.activities.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {message.activities.map((activity, i) => (
+                      <ActivityChip key={i} activity={activity} />
+                    ))}
+                  </div>
+                )}
+                {views.length > 0 && (
+                  <div className="mb-2 space-y-2">
+                    {views.map((view) => (
+                      <div key={view.key}>{view.node}</div>
+                    ))}
+                  </div>
+                )}
+                {message.content && <p className="whitespace-pre-wrap">{message.content}</p>}
+                {message.role === "assistant" &&
+                  !message.content &&
+                  !message.error &&
+                  message.activities.length === 0 && (
+                    <p className="animate-pulse text-muted-foreground">Thinking…</p>
+                  )}
+                {message.error && (
+                  <p className="text-destructive">Something went wrong: {message.error}</p>
+                )}
+                {message.usage && (
+                  <p className="mt-1.5 text-[10px] text-muted-foreground">
+                    {message.usage.inputTokens.toLocaleString()} in /{" "}
+                    {message.usage.outputTokens.toLocaleString()} out tokens
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <form

@@ -96,10 +96,11 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 4 (Jul 22–28) — Generative UI
 
-- [ ] Component registry: tool name → typed renderer (`LocationCard`,
-      `ComparisonTable`, `MetricsSummary`)
-- [ ] Chat renders tool results through the registry instead of prose-only
-- [ ] ADR-003: deterministic generative UI (registry) vs model-generated markup
+- [x] Component registry: tool name → typed renderer (`LocationCard`,
+      `ComparisonTable`, `MetricsSummary`, + `LocationList`)
+- [x] Chat renders tool results through the registry instead of prose-only
+- [x] ADR-0004: deterministic generative UI (registry) vs model-generated
+      markup (numbered 0004 — 0003 became the streaming chat protocol)
 
 **Demo:** "compare downtown locations by revenue" → a real table in the chat.
 
