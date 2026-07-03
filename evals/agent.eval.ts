@@ -12,6 +12,7 @@ import { buildGoldenCases } from "@/lib/evals/golden";
 import { writeReport } from "@/lib/evals/report";
 import { buildReport, runCase } from "@/lib/evals/runner";
 import type { CaseResult } from "@/lib/evals/types";
+import { flushTelemetry, initTelemetry } from "@/lib/telemetry/provider";
 
 config({ path: ".env.local" });
 
@@ -22,6 +23,10 @@ if (!process.env.ANTHROPIC_API_KEY || !process.env.DATABASE_URL) {
 }
 
 const deps: AskDeps = { client: new Anthropic(), db: getDb() };
+// Spans from this run land in the same Postgres the app uses; the run id
+// ties them together for the observability page (ADR-0006).
+initTelemetry(deps.db);
+const runId = `run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 const cases = buildGoldenCases();
 const results: CaseResult[] = [];
 
@@ -32,7 +37,7 @@ describe("agent eval", () => {
     it.concurrent(evalCase.id, async () => {
       let result;
       try {
-        result = await runCase(deps, evalCase);
+        result = await runCase(deps, evalCase, runId);
       } catch (error) {
         // A pipeline failure (API 529, timeout) still gets a row in the
         // report — a silently missing case would misrepresent the run.
@@ -62,7 +67,10 @@ describe("agent eval", () => {
     const report = buildReport(results);
     const base = writeReport(report);
     console.log(`\nEval report written to ${base}.md (+ .json)`);
+    console.log(`Telemetry run id: ${runId}`);
     console.log("Mean scores:", report.summary.meanScores);
+    // Drain pending span exports before the pool closes under them.
+    await flushTelemetry();
     await closeDb();
   });
 });

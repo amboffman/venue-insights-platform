@@ -1,8 +1,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { Context } from "@opentelemetry/api";
 
 import type { Database } from "../db/client";
 import { SEED_END_DATE, SEED_START_DATE } from "../db/seed-data";
 import { getToolSpecs, runTool } from "../mcp/tools";
+import { endToolSpan, startToolSpan } from "../telemetry/spans";
 
 // Constants and helpers shared by the non-streaming loop (tool-loop.ts) and
 // the streaming loop (stream-loop.ts) so the two cannot drift apart.
@@ -57,8 +59,13 @@ export interface ExecutedToolUse {
 export async function executeToolUse(
   db: Database,
   block: Anthropic.ToolUseBlock,
+  telemetryCtx?: Context,
 ): Promise<ExecutedToolUse> {
+  // No try/catch: runTool never throws (lib/mcp boundary rule) — a failure
+  // is a value, and the span records it as the outcome.
+  const span = startToolSpan(telemetryCtx, block.name);
   const result = await runTool(db, block.name, block.input);
+  endToolSpan(span, result.ok ? { ok: true } : { ok: false, error: result.error });
   return {
     record: {
       name: block.name,
@@ -82,6 +89,7 @@ export async function executeToolUse(
 export function executeToolUses(
   db: Database,
   blocks: Anthropic.ToolUseBlock[],
+  telemetryCtx?: Context,
 ): Promise<ExecutedToolUse[]> {
-  return Promise.all(blocks.map((block) => executeToolUse(db, block)));
+  return Promise.all(blocks.map((block) => executeToolUse(db, block, telemetryCtx)));
 }

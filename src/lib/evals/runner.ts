@@ -1,5 +1,6 @@
 import { askQuestion, type AskDeps } from "../ai/tool-loop";
 import { DEFAULT_MODEL } from "../ai/shared";
+import { ATTR_MLIP_EVAL_CASE_ID, ATTR_MLIP_EVAL_RUN_ID } from "../telemetry/attributes";
 import { argumentCorrectnessScorer } from "./scorers/argument-correctness";
 import { groundednessScorer } from "./scorers/groundedness";
 import { toolSelectionScorer } from "./scorers/tool-selection";
@@ -33,9 +34,20 @@ function applyScorer(
   }
 }
 
-export async function runCase(deps: AskDeps, evalCase: EvalCase): Promise<CaseResult> {
+export async function runCase(
+  deps: AskDeps,
+  evalCase: EvalCase,
+  runId?: string,
+): Promise<CaseResult> {
   const started = performance.now();
-  const result = await askQuestion(deps, evalCase.question);
+  // Correlation via span attributes, not context plumbing (ADR-0006): the
+  // observability page groups spans per eval run / case with a WHERE clause.
+  const result = await askQuestion(deps, evalCase.question, {
+    telemetryAttributes: {
+      [ATTR_MLIP_EVAL_CASE_ID]: evalCase.id,
+      ...(runId === undefined ? {} : { [ATTR_MLIP_EVAL_RUN_ID]: runId }),
+    },
+  });
   const durationMs = Math.round(performance.now() - started);
 
   const transcript = { answer: result.answer, toolCalls: result.toolCalls };

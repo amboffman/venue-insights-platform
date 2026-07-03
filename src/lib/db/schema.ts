@@ -3,6 +3,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -68,6 +69,45 @@ export const reviews = pgTable(
   },
   (table) => [index("reviews_location_id_idx").on(table.locationId)],
 );
+
+export const spanStatus = pgEnum("span_status", ["unset", "ok", "error"]);
+
+// OTel span mirror (ADR-0006). Deliberately generic — Claude-call spans and
+// tool spans carry different attributes, so the payload lives in jsonb and
+// the observability queries extract the keys they need. IDs are the OTel
+// hex strings (16-byte trace, 8-byte span), not identities.
+export const spans = pgTable(
+  "spans",
+  {
+    spanId: text("span_id").primaryKey(),
+    traceId: text("trace_id").notNull(),
+    parentSpanId: text("parent_span_id"),
+    name: text("name").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }).notNull(),
+    // Derivable from the timestamps; denormalized because every dashboard
+    // query aggregates on it.
+    durationMs: doublePrecision("duration_ms").notNull(),
+    status: spanStatus("status").notNull(),
+    statusMessage: text("status_message"),
+    attributes: jsonb("attributes").notNull(),
+  },
+  (table) => [
+    // One turn = one trace: the dashboard's grouping key.
+    index("spans_trace_id_idx").on(table.traceId),
+    index("spans_name_idx").on(table.name),
+    index("spans_started_at_idx").on(table.startedAt),
+  ],
+);
+
+// Fixed-window abuse counters for public endpoints (ADR-0007): one row per
+// (scope, window), upsert-incremented; expired rows are purged
+// opportunistically on each hit, so no scheduler is needed.
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
 
 export const dailyMetrics = pgTable(
   "daily_metrics",

@@ -122,11 +122,18 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 6 (Aug 5–11) — Observability ⚑ go/no-go
 
-- [ ] OTel spans around every Claude call (latency, tokens, cost estimate)
-      and every tool invocation (name, duration, outcome)
-- [ ] Spans persisted (Postgres table is fine)
-- [ ] `/observability` page: cost + latency table per conversation and per
-      eval run. Charts are stretch, not scope.
+- [x] OTel spans around every Claude call (latency, tokens, cost estimate)
+      and every tool invocation (name, duration, outcome) — ADR-0006;
+      turn → {chat, execute_tool} trace trees, GenAI semconv attrs, cost in
+      integer µ$
+- [x] Spans persisted (Postgres table is fine) — spans table + Postgres
+      exporter through lib/db; migration applied to Supabase 2026-07-03
+- [x] `/observability` page: cost + latency table per conversation and per
+      eval run (tiles + two tables; force-dynamic server component reading
+      lib/db aggregates). Charts remain stretch, not scope.
+- [x] _(unplanned, post-deploy)_ Public-endpoint cost protection, ADR-0007:
+      per-IP fixed-window rate limit + daily budget breaker fed by the
+      spans table; Anthropic Console spend cap as the operator backstop.
 - [ ] **Checkpoint (Aug 11):** if the eval harness isn't done, cut Week 7
       (MCP) and spend it finishing evals + observability.
 
