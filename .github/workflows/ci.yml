@@ -3,8 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+  # No branch filter: stacked PRs (feature → feature) need CI too.
   pull_request:
-    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -43,3 +43,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Build
+        run: pnpm build

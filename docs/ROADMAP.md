@@ -54,9 +54,10 @@ decision was made, checkbox updated here, and the explain-back conversation
 - [x] ADR-001: data model + Drizzle confirmation (entities: brands,
       locations, reviews, daily_metrics; single-tenant; discuss what a
       locator-app veteran would recognize as realistic)
-- [ ] Supabase project created; `DATABASE_URL` etc. in `.env.local`
+- [x] Supabase project created; `DATABASE_URL` etc. in `.env.local`
       (author does this — account setup can't be delegated), then
-      `pnpm db:migrate && pnpm seed` against it
+      `pnpm db:migrate && pnpm seed` against it (seeded 2026-07-02:
+      5 brands / 50 locations / 733 reviews / 17,330 metric rows)
 - [x] Drizzle schema + migrations for the core entities
 - [x] Deterministic seed script (`pnpm seed`, seeded RNG, ~5 brands /
       ~50 locations / reviews + 12 months of daily metrics)
@@ -81,11 +82,13 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 3 (Jul 15–21) — Streaming chat + deploy ⚑ go/no-go
 
-- [ ] Streaming route handler (read the vendored Next 16 docs first —
-      streaming/route-handler APIs changed from training data)
-- [ ] Chat page: message list, input, streamed assistant responses, visible
+- [x] Streaming route handler (read the vendored Next 16 docs first —
+      streaming/route-handler APIs changed from training data) — NDJSON
+      typed events, ADR-0003
+- [x] Chat page: message list, input, streamed assistant responses, visible
       tool-call activity (even if just "Searching locations…")
-- [ ] Deploy to Vercel; add `pnpm build` to CI
+- [ ] Deploy to Vercel (author connects repo + env vars); `pnpm build` added
+      to CI ✓
 - [ ] **Checkpoint (Jul 21):** if the spine is not deployed, cut Week 7 (MCP)
       now and shift everything up one week.
 
