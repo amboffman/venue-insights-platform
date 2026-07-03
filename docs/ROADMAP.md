@@ -141,10 +141,20 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 7 (Aug 12–18) — MCP server 👤 author-owned slice
 
-- [ ] Stdio MCP server wrapping the same `lib/mcp` tools
-      (consult current MCP SDK docs before writing this)
-- [ ] **Author implements one tool wrapper end-to-end; Claude reviews**
-- [ ] README with setup for Claude Desktop / Claude Code as clients
+- [x] Stdio MCP server wrapping the same `lib/mcp` tools — ADR-0008:
+      low-level Server passthrough of getToolSpecs()/runTool(), SDK v1
+      pinned (v2 beta lands mid-freeze), protocol tests over
+      InMemoryTransport, E2E stdio smoke against Supabase verified
+- [x] ~~Author implements one tool wrapper end-to-end~~ — author handed
+      the slice to Claude up front (2026-07-03, demo urgency; second
+      hand-back). Replacement learning unit below.
+- [ ] **Author recreates the tools/call handler from scratch** (delete the
+      CallToolRequestSchema handler in src/lib/mcp/server.ts, re-implement
+      against tests/mcp/server.test.ts — Week 5 TDD shape), then
+      explain-back with the Slice 6+7 drills
+- [x] README with setup for Claude Desktop / Claude Code as clients
+      (docs/mcp-server.md — incl. Windows cmd /c npx wrapper + stdout
+      discipline troubleshooting)
 - [ ] npm publish is stretch — an in-repo, documented server is enough
 
 **Demo:** Claude Desktop answering questions via the MCP server against our DB.
