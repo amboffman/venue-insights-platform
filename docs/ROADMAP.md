@@ -51,28 +51,31 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 1 (Jul 1–7) — Data foundation
 
-- [ ] ADR-001: data model + Drizzle confirmation (entities: brands,
+- [x] ADR-001: data model + Drizzle confirmation (entities: brands,
       locations, reviews, daily_metrics; single-tenant; discuss what a
       locator-app veteran would recognize as realistic)
 - [ ] Supabase project created; `DATABASE_URL` etc. in `.env.local`
-      (author does this — account setup can't be delegated)
-- [ ] Drizzle schema + migrations for the core entities
-- [ ] Deterministic seed script (`pnpm seed`, seeded RNG, ~5 brands /
+      (author does this — account setup can't be delegated), then
+      `pnpm db:migrate && pnpm seed` against it
+- [x] Drizzle schema + migrations for the core entities
+- [x] Deterministic seed script (`pnpm seed`, seeded RNG, ~5 brands /
       ~50 locations / reviews + 12 months of daily metrics)
-- [ ] 3–4 typed query functions in `lib/db` with unit tests
+- [x] 3–4 typed query functions in `lib/db` with unit tests
 
 **Demo:** seeded database; query tests green.
 
 ### Week 2 (Jul 8–14) — Tools + tool-calling loop
 
-- [ ] 4 tools in `lib/mcp` as pure functions with schema-validated inputs:
+- [x] 4 tools in `lib/mcp` as pure functions with schema-validated inputs:
       `search_locations`, `get_location_details`, `aggregate_metrics`,
       `compare_locations`
-- [ ] ADR-002: raw Anthropic SDK vs Vercel AI SDK (record the learning
+- [x] ADR-002: raw Anthropic SDK vs Vercel AI SDK (record the learning
       rationale and what it costs us)
-- [ ] Non-streaming tool-use loop in `lib/ai`: question → Claude → tool
+- [x] Non-streaming tool-use loop in `lib/ai`: question → Claude → tool
       calls → tool results → grounded answer; tested with a mocked client
-- [ ] Throwaway harness (script or route) to ask questions from the terminal
+- [x] Throwaway harness (script or route) to ask questions from the terminal
+      (`pnpm ask "…"` — needs `DATABASE_URL` + `ANTHROPIC_API_KEY` for the
+      live demo)
 
 **Demo:** plain-English question → grounded, tool-backed answer in the terminal.
 
