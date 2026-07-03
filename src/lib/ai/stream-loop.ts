@@ -1,6 +1,15 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { Attributes, Span } from "@opentelemetry/api";
 
 import type { Database } from "../db/client";
+import {
+  endClaudeCallSpan,
+  endTurnSpan,
+  failSpan,
+  markSpanError,
+  startClaudeCallSpan,
+  startTurnSpan,
+} from "../telemetry/spans";
 import type { ChatStreamEvent, ChatTurn } from "../types/chat";
 import {
   DEFAULT_MAX_TOKENS,
@@ -73,6 +82,8 @@ export interface StreamOptions {
   maxToolIterations?: number;
   /** propagated to every API round; abort ends the loop */
   signal?: AbortSignal;
+  /** extra attributes for the turn's root span */
+  telemetryAttributes?: Attributes;
 }
 
 /** History is client-supplied text turns (ADR-0003): the server is
@@ -98,9 +109,17 @@ export async function* streamAnswer(
   let iterations = 0;
   let pauseRounds = 0;
 
+  // Root span for the whole turn (ADR-0006); no-op unless initTelemetry ran.
+  // The in-flight round's span is tracked in a variable because an abandoned
+  // generator (client disconnect → generator.return() → finally) must still
+  // close it — AsyncLocalStorage context can't be trusted across yields.
+  const { span: turnSpan, ctx } = startTurnSpan("mlip.chat_turn", options.telemetryAttributes);
+  let callSpan: Span | null = null;
+
   try {
     while (iterations - pauseRounds < maxToolIterations && pauseRounds <= MAX_PAUSE_ROUNDS) {
       iterations++;
+      callSpan = startClaudeCallSpan(ctx, model);
       const stream = deps.client.streamMessage(
         {
           model,
@@ -116,6 +135,13 @@ export async function* streamAnswer(
         yield { type: "text_delta", text };
       }
       response = await stream.finalMessage();
+      endClaudeCallSpan(callSpan, {
+        model,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        stopReason: response.stop_reason,
+      });
+      callSpan = null;
       usage.inputTokens += response.usage.input_tokens;
       usage.outputTokens += response.usage.output_tokens;
 
@@ -142,7 +168,7 @@ export async function* streamAnswer(
       for (const block of toolUseBlocks) {
         yield { type: "tool_start", name: block.name, input: block.input };
       }
-      const executed = await executeToolUses(deps.db, toolUseBlocks);
+      const executed = await executeToolUses(deps.db, toolUseBlocks, ctx);
       for (const { record } of executed) {
         yield {
           type: "tool_result",
@@ -164,7 +190,19 @@ export async function* streamAnswer(
     // API failures (rate limit, network, overload) end the stream with a
     // clean event instead of a broken connection — the lib/ai boundary owns
     // these failure modes.
+    if (callSpan) {
+      failSpan(callSpan, error);
+      callSpan = null;
+    }
+    markSpanError(turnSpan, error);
     const message = error instanceof Error ? error.message : String(error);
     yield { type: "error", message };
+  } finally {
+    // Runs on normal completion AND when the consumer abandons the stream
+    // (ReadableStream cancel → generator.return()) — spans never leak.
+    if (callSpan) {
+      failSpan(callSpan, new Error("stream closed before the round completed"));
+    }
+    endTurnSpan(turnSpan, { model, ...usage, iterations });
   }
 }

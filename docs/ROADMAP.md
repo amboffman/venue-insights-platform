@@ -122,9 +122,13 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 6 (Aug 5–11) — Observability ⚑ go/no-go
 
-- [ ] OTel spans around every Claude call (latency, tokens, cost estimate)
-      and every tool invocation (name, duration, outcome)
-- [ ] Spans persisted (Postgres table is fine)
+- [x] OTel spans around every Claude call (latency, tokens, cost estimate)
+      and every tool invocation (name, duration, outcome) — ADR-0006;
+      turn → {chat, execute_tool} trace trees, GenAI semconv attrs, cost in
+      integer µ$
+- [ ] Spans persisted (Postgres table is fine) — table + exporter + route/
+      eval wiring done and PGlite-tested; ☐ apply migration to Supabase
+      (`pnpm db:migrate`) to go live
 - [ ] `/observability` page: cost + latency table per conversation and per
       eval run. Charts are stretch, not scope.
 - [ ] **Checkpoint (Aug 11):** if the eval harness isn't done, cut Week 7

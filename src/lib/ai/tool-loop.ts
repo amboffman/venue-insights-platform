@@ -1,6 +1,15 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { Attributes } from "@opentelemetry/api";
 
 import type { Database } from "../db/client";
+import {
+  endClaudeCallSpan,
+  endTurnSpan,
+  failSpan,
+  markSpanError,
+  startClaudeCallSpan,
+  startTurnSpan,
+} from "../telemetry/spans";
 import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_MAX_TOOL_ITERATIONS,
@@ -45,6 +54,9 @@ export interface AskOptions {
   model?: string;
   maxTokens?: number;
   maxToolIterations?: number;
+  /** extra attributes for the turn's root span — the eval runner passes
+   * run/case ids here so the dashboard can group spans per eval run */
+  telemetryAttributes?: Attributes;
 }
 
 export interface AskResult {
@@ -77,57 +89,82 @@ export async function askQuestion(
   // continuation, so this must be prepended to the final answer.
   let pausedText = "";
 
-  while (iterations - pauseRounds < maxToolIterations && pauseRounds <= MAX_PAUSE_ROUNDS) {
-    iterations++;
-    response = await deps.client.messages.create({
-      model,
-      max_tokens: maxTokens,
-      system: SYSTEM_PROMPT,
-      tools,
-      messages,
-    });
-    usage.inputTokens += response.usage.input_tokens;
-    usage.outputTokens += response.usage.output_tokens;
+  // Root span for the whole turn; API rounds and tool runs hang off `ctx`
+  // explicitly (ADR-0006). All of this is a no-op unless initTelemetry ran.
+  const { span: turnSpan, ctx } = startTurnSpan("mlip.ask", options.telemetryAttributes);
 
-    // Server-side pause: append the assistant turn as-is and let the API
-    // resume where it left off.
-    if (response.stop_reason === "pause_turn") {
-      pauseRounds++;
-      const text = textOf(response.content);
-      if (text) pausedText += text + "\n";
+  try {
+    while (iterations - pauseRounds < maxToolIterations && pauseRounds <= MAX_PAUSE_ROUNDS) {
+      iterations++;
+      const callSpan = startClaudeCallSpan(ctx, model);
+      try {
+        response = await deps.client.messages.create({
+          model,
+          max_tokens: maxTokens,
+          system: SYSTEM_PROMPT,
+          tools,
+          messages,
+        });
+      } catch (error) {
+        failSpan(callSpan, error);
+        throw error;
+      }
+      endClaudeCallSpan(callSpan, {
+        model,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        stopReason: response.stop_reason,
+      });
+      usage.inputTokens += response.usage.input_tokens;
+      usage.outputTokens += response.usage.output_tokens;
+
+      // Server-side pause: append the assistant turn as-is and let the API
+      // resume where it left off.
+      if (response.stop_reason === "pause_turn") {
+        pauseRounds++;
+        const text = textOf(response.content);
+        if (text) pausedText += text + "\n";
+        messages.push({ role: "assistant", content: response.content });
+        continue;
+      }
+
+      if (response.stop_reason !== "tool_use") break;
+
+      // Executing tools we can never report back (budget exhausted) is wasted
+      // DB work and misleading UI — stop before running them.
+      if (iterations - pauseRounds >= maxToolIterations) break;
+
+      // Append the FULL assistant content (including thinking blocks — the API
+      // requires them back verbatim on the next request).
       messages.push({ role: "assistant", content: response.content });
-      continue;
+
+      const toolUseBlocks = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+      );
+
+      const executed = await executeToolUses(deps.db, toolUseBlocks, ctx);
+      toolCalls.push(...executed.map((e) => e.record));
+
+      // All results for one assistant turn go back in ONE user message —
+      // splitting them across messages breaks parallel tool use.
+      messages.push({ role: "user", content: executed.map((e) => e.resultBlock) });
     }
 
-    if (response.stop_reason !== "tool_use") break;
+    const answer = pausedText + (response ? textOf(response.content) : "");
 
-    // Executing tools we can never report back (budget exhausted) is wasted
-    // DB work and misleading UI — stop before running them.
-    if (iterations - pauseRounds >= maxToolIterations) break;
-
-    // Append the FULL assistant content (including thinking blocks — the API
-    // requires them back verbatim on the next request).
-    messages.push({ role: "assistant", content: response.content });
-
-    const toolUseBlocks = response.content.filter(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
-    );
-
-    const executed = await executeToolUses(deps.db, toolUseBlocks);
-    toolCalls.push(...executed.map((e) => e.record));
-
-    // All results for one assistant turn go back in ONE user message —
-    // splitting them across messages breaks parallel tool use.
-    messages.push({ role: "user", content: executed.map((e) => e.resultBlock) });
+    return {
+      answer,
+      toolCalls,
+      usage,
+      stopReason: response?.stop_reason ?? null,
+      iterations,
+    };
+  } catch (error) {
+    markSpanError(turnSpan, error);
+    throw error;
+  } finally {
+    // Totals land even on the error path; end() is here so no return/throw
+    // can leak an open span.
+    endTurnSpan(turnSpan, { model, ...usage, iterations });
   }
-
-  const answer = pausedText + (response ? textOf(response.content) : "");
-
-  return {
-    answer,
-    toolCalls,
-    usage,
-    stopReason: response?.stop_reason ?? null,
-    iterations,
-  };
 }
