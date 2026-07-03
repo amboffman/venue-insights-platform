@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "allow": ["PowerShell(corepack enable 2>&1)", "PowerShell(corepack pnpm --version 2>&1)"]
+  }
+}
