@@ -29,7 +29,7 @@ function score(answer: string, outputs: unknown[]) {
   });
 }
 
-describe.skip("groundednessScorer (AUTHOR: unskip and implement)", () => {
+describe("groundednessScorer (AUTHOR: unskip and implement)", () => {
   it("scores 1.0 when the answer makes no numeric claims", () => {
     const result = score("The portfolio is doing well overall.", [{ totalRevenueCents: 12345 }]);
     expect(result.score).toBe(1);
