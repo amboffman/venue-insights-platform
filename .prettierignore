@@ -4,3 +4,7 @@ pnpm-lock.yaml
 *.md
 .vscode
 public
+
+# `next build` rewrites tsconfig.json (mandatory jsx: react-jsx + its own
+# array formatting). Let Next own this file so Prettier doesn't fight it.
+tsconfig.json

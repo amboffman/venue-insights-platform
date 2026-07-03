@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Multi-Location Intelligence Platform (MLIP)
 
-## Getting Started
+**Ask questions in plain English across many business locations — and get
+grounded, tool-backed answers with rich, generated UI.** MLIP is a production-grade
+demonstration of AI-augmented full-stack engineering for multi-location SaaS
+(think hospitality, restaurant groups, and commercial real estate portfolios).
 
-First, run the development server:
+> **Status:** Active development. The tooling/architecture foundation is in place;
+> features are being built in vertical slices. See [`docs/DECISIONS.md`](docs/DECISIONS.md)
+> for the roadmap and the reasoning behind each choice.
+
+## Three core features
+
+1. **Conversational multi-location search** — a chat interface where Claude uses
+   tool calling to query structured business data and renders results as
+   generative UI (cards, tables, charts), not just text.
+2. **Open-source MCP server** — the local-business intelligence tools, exposed
+   over the [Model Context Protocol](https://modelcontextprotocol.io) so any MCP
+   client can use them.
+3. **Evaluation & observability layer** — a DIY TypeScript eval suite plus
+   OpenTelemetry traces and a cost/latency dashboard, so answer quality and
+   spend are measured, not assumed.
+
+## Stack
+
+| Layer         | Choice                                                          |
+| ------------- | --------------------------------------------------------------- |
+| Frontend      | Next.js 16 (App Router) · React 19 · TypeScript (strict) · Tailwind v4 · shadcn/ui (Radix) |
+| AI            | Anthropic Claude API — tool use + MCP                           |
+| Persistence   | PostgreSQL on Supabase (synthetic seeded dataset)               |
+| Evals / obs.  | DIY TypeScript harness · OpenTelemetry                          |
+| Tooling       | Vitest · ESLint (flat) · Prettier · GitHub Actions CI           |
+| Deploy        | Vercel                                                          |
+
+## Architecture
+
+The code under [`src/lib/`](src/lib) is split into layers with **enforced
+boundaries** (each has a README spelling out its rules):
+
+- [`lib/ai`](src/lib/ai/README.md) — Claude orchestration: prompts, tool-call handling, response validation. Server-only.
+- [`lib/db`](src/lib/db/README.md) — the only place SQL/ORM code lives. Returns domain types, not rows.
+- [`lib/mcp`](src/lib/mcp/README.md) — MCP tool definitions (pure: validate → act → typed output).
+- [`lib/telemetry`](src/lib/telemetry/README.md) — OpenTelemetry instrumentation.
+- [`lib/types`](src/lib/types/README.md) — types that cross module boundaries.
+
+## Getting started
+
+**Prerequisites:** Node 20+ and [pnpm](https://pnpm.io) (pinned via `packageManager`).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.example .env.local   # then fill in ANTHROPIC_API_KEY
+pnpm dev                     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Verify Claude connectivity:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm smoke:claude
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+| Script               | Does                                              |
+| -------------------- | ------------------------------------------------- |
+| `pnpm dev`           | Run the dev server (Turbopack)                    |
+| `pnpm build`         | Production build                                  |
+| `pnpm test`          | Run the Vitest suite once                         |
+| `pnpm test:watch`    | Vitest in watch mode                              |
+| `pnpm check`         | Typecheck + lint + format check + tests (CI gate) |
+| `pnpm check:fix`     | Auto-fix formatting/lint, then typecheck          |
+| `pnpm smoke:claude`  | Smoke-test the Anthropic API connection           |
 
-To learn more about Next.js, take a look at the following resources:
+## Project docs
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — decision log (one line each)
+- [`docs/adr/`](docs/adr) — full architecture decision records
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## License
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[MIT](LICENSE)
