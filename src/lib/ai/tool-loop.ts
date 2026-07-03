@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Attributes } from "@opentelemetry/api";
 
 import type { Database } from "../db/client";
+import { SPAN_NAME_ASK } from "../telemetry/attributes";
 import {
   endClaudeCallSpan,
   endTurnSpan,
@@ -91,7 +92,7 @@ export async function askQuestion(
 
   // Root span for the whole turn; API rounds and tool runs hang off `ctx`
   // explicitly (ADR-0006). All of this is a no-op unless initTelemetry ran.
-  const { span: turnSpan, ctx } = startTurnSpan("mlip.ask", options.telemetryAttributes);
+  const { span: turnSpan, ctx } = startTurnSpan(SPAN_NAME_ASK, options.telemetryAttributes);
 
   try {
     while (iterations - pauseRounds < maxToolIterations && pauseRounds <= MAX_PAUSE_ROUNDS) {

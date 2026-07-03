@@ -1,4 +1,4 @@
-import { and, count, desc, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, sql } from "drizzle-orm";
 
 import {
   ATTR_GEN_AI_USAGE_INPUT_TOKENS,
@@ -6,6 +6,8 @@ import {
   ATTR_MLIP_COST_MICROUSD,
   ATTR_MLIP_EVAL_CASE_ID,
   ATTR_MLIP_EVAL_RUN_ID,
+  SPAN_NAME_ASK,
+  SPAN_NAME_CHAT_TURN,
 } from "../telemetry/attributes";
 import type { EvalRunSummary, SpanRecord, TurnSummary } from "../types/telemetry";
 import type { Database } from "./client";
@@ -63,9 +65,28 @@ const attrSumOrZero = (key: string) =>
   sql<number>`coalesce(sum((${spans.attributes}->>${attrKey(key)})::numeric), 0)`.mapWith(Number);
 
 function kindOf(name: string): TurnSummary["kind"] {
-  if (name === "mlip.ask") return "ask";
-  if (name === "mlip.chat_turn") return "chat";
+  if (name === SPAN_NAME_ASK) return "ask";
+  if (name === SPAN_NAME_CHAT_TURN) return "chat";
   return "other";
+}
+
+/** Total public-chat spend since `since` — the daily-budget sensor
+ * (ADR-0007). Counts only finished chat turns: eval runs (mlip.ask) spend
+ * the operator's own money, and in-flight turns haven't exported yet, so
+ * the gate is eventually-consistent by design — the Anthropic Console
+ * spend cap is the hard backstop. */
+export async function sumChatCostMicroUsdSince(db: Database, since: Date): Promise<number> {
+  const [row] = await db
+    .select({ total: attrSumOrZero(ATTR_MLIP_COST_MICROUSD) })
+    .from(spans)
+    .where(
+      and(
+        isNull(spans.parentSpanId),
+        eq(spans.name, SPAN_NAME_CHAT_TURN),
+        gte(spans.startedAt, since),
+      ),
+    );
+  return row?.total ?? 0;
 }
 
 /** Newest-first root spans (one per turn/question) with their per-trace

@@ -131,6 +131,9 @@ decision was made, checkbox updated here, and the explain-back conversation
 - [x] `/observability` page: cost + latency table per conversation and per
       eval run (tiles + two tables; force-dynamic server component reading
       lib/db aggregates). Charts remain stretch, not scope.
+- [x] _(unplanned, post-deploy)_ Public-endpoint cost protection, ADR-0007:
+      per-IP fixed-window rate limit + daily budget breaker fed by the
+      spans table; Anthropic Console spend cap as the operator backstop.
 - [ ] **Checkpoint (Aug 11):** if the eval harness isn't done, cut Week 7
       (MCP) and spend it finishing evals + observability.
 

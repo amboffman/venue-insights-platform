@@ -4,6 +4,8 @@ import { z } from "zod";
 import { eventsToNdjsonStream } from "@/lib/ai/ndjson";
 import { anthropicStreamingClient, streamAnswer } from "@/lib/ai/stream-loop";
 import { getDb } from "@/lib/db/client";
+import { hitRateLimit } from "@/lib/db/rate-limit";
+import { sumChatCostMicroUsdSince } from "@/lib/db/spans";
 import { flushTelemetry, initTelemetry } from "@/lib/telemetry/provider";
 import type { ChatStreamEvent } from "@/lib/types/chat";
 import { MAX_CHAT_TURNS, MAX_TURN_CHARS } from "@/lib/types/chat";
@@ -12,6 +14,35 @@ import { MAX_CHAT_TURNS, MAX_TURN_CHARS } from "@/lib/types/chat";
 export const runtime = "nodejs";
 // Streaming answers with tool round-trips can exceed Vercel's default limit.
 export const maxDuration = 60;
+
+// ── public-endpoint cost protection (ADR-0007) ──────────────────────────
+// This route spends real money per request, so it is gated twice: a per-IP
+// fixed-window limit (fairness), then a daily spend ceiling read from the
+// spans table (the Week 6 telemetry doubling as a circuit-breaker sensor).
+// The Anthropic Console spend cap is the hard backstop behind both.
+
+function envInt(name: string, fallback: number): number {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const RATE_LIMIT_MAX = envInt("CHAT_RATE_LIMIT_MAX", 8);
+const RATE_LIMIT_WINDOW_MS = envInt("CHAT_RATE_LIMIT_WINDOW_MINUTES", 10) * 60_000;
+const DAILY_BUDGET_MICROUSD = envInt("CHAT_DAILY_BUDGET_MICROUSD", 2_000_000);
+
+/** First hop of x-forwarded-for — set by Vercel's proxy, not the client,
+ * so it is trustworthy on the platform we deploy to. */
+function clientIp(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  return forwarded?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
+}
+
+function tooManyRequests(error: string, retryAfterSeconds: number): Response {
+  return Response.json(
+    { error },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+  );
+}
 
 /** Serverless functions freeze right after the response finishes — awaiting
  * the span exports INSIDE the stream (before it closes) is what guarantees
@@ -61,6 +92,28 @@ export async function POST(request: Request) {
   const db = getDb();
   // Spans → Postgres (ADR-0006). Idempotent; first request pays the setup.
   initTelemetry(db);
+
+  // Cheapest check first: one upsert per request, scoped to the caller.
+  const now = new Date();
+  const hit = await hitRateLimit(db, `chat:${clientIp(request)}`, now, RATE_LIMIT_WINDOW_MS);
+  if (hit.count > RATE_LIMIT_MAX) {
+    return tooManyRequests(
+      "You're sending messages too quickly — give it a few minutes.",
+      hit.retryAfterSeconds,
+    );
+  }
+
+  // Then the shared ceiling: today's finished chat turns, in microdollars.
+  const startOfUtcDay = new Date(now);
+  startOfUtcDay.setUTCHours(0, 0, 0, 0);
+  const spentToday = await sumChatCostMicroUsdSince(db, startOfUtcDay);
+  if (spentToday >= DAILY_BUDGET_MICROUSD) {
+    const utcMidnight = startOfUtcDay.getTime() + 24 * 60 * 60 * 1000;
+    return tooManyRequests(
+      "The public demo's daily budget is used up — come back tomorrow.",
+      Math.max(1, Math.ceil((utcMidnight - now.getTime()) / 1000)),
+    );
+  }
 
   const events = streamAnswer(
     { client: anthropicStreamingClient(new Anthropic()), db },

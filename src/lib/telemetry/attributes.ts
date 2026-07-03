@@ -13,6 +13,11 @@ export const ATTR_GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens";
 export const ATTR_GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens";
 export const ATTR_GEN_AI_TOOL_NAME = "gen_ai.tool.name";
 
+// Root-span names — shared by the loops (producers) and the budget gate /
+// dashboard queries (consumers) so the strings can never drift apart.
+export const SPAN_NAME_ASK = "mlip.ask";
+export const SPAN_NAME_CHAT_TURN = "mlip.chat_turn";
+
 // Project-namespaced attributes — cost is not part of the gen_ai semconv,
 // and the eval runner uses these to correlate spans to runs/cases.
 export const ATTR_MLIP_COST_MICROUSD = "mlip.cost_microusd";

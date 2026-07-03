@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { insertSpans, listEvalRunSummaries, listTurnSummaries } from "@/lib/db/spans";
+import {
+  insertSpans,
+  listEvalRunSummaries,
+  listTurnSummaries,
+  sumChatCostMicroUsdSince,
+} from "@/lib/db/spans";
 import type { SpanRecord } from "@/lib/types/telemetry";
 
 import { createSeededDb, type SeededDb } from "../helpers/seeded-db";
@@ -123,6 +128,20 @@ describe("span dashboard queries", () => {
     const turns = await listTurnSummaries(seeded.db, 1);
     expect(turns).toHaveLength(1);
     expect(turns[0]!.traceId).toBe(TRACE_A);
+  });
+
+  it("sums only chat-turn spend for the budget gate", async () => {
+    // Trace A is the only mlip.chat_turn (2700µ$); B/C are mlip.ask and
+    // child spans carry no cost — none of them may leak into the budget.
+    const sinceMorning = await sumChatCostMicroUsdSince(
+      seeded.db,
+      new Date("2026-07-03T00:00:00Z"),
+    );
+    expect(sinceMorning).toBe(2700);
+
+    // `since` is respected: a cutoff after trace A's start excludes it.
+    const sinceLater = await sumChatCostMicroUsdSince(seeded.db, new Date("2026-07-03T12:30:00Z"));
+    expect(sinceLater).toBe(0);
   });
 
   it("aggregates eval runs across their case turns", async () => {

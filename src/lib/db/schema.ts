@@ -100,6 +100,15 @@ export const spans = pgTable(
   ],
 );
 
+// Fixed-window abuse counters for public endpoints (ADR-0007): one row per
+// (scope, window), upsert-incremented; expired rows are purged
+// opportunistically on each hit, so no scheduler is needed.
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 export const dailyMetrics = pgTable(
   "daily_metrics",
   {

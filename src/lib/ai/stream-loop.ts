@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Attributes, Span } from "@opentelemetry/api";
 
 import type { Database } from "../db/client";
+import { SPAN_NAME_CHAT_TURN } from "../telemetry/attributes";
 import {
   endClaudeCallSpan,
   endTurnSpan,
@@ -113,7 +114,7 @@ export async function* streamAnswer(
   // The in-flight round's span is tracked in a variable because an abandoned
   // generator (client disconnect → generator.return() → finally) must still
   // close it — AsyncLocalStorage context can't be trusted across yields.
-  const { span: turnSpan, ctx } = startTurnSpan("mlip.chat_turn", options.telemetryAttributes);
+  const { span: turnSpan, ctx } = startTurnSpan(SPAN_NAME_CHAT_TURN, options.telemetryAttributes);
   let callSpan: Span | null = null;
 
   try {

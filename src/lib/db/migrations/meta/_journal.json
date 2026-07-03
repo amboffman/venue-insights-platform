@@ -15,6 +15,13 @@
       "when": 1783117613116,
       "tag": "0001_dizzy_dreaming_celestial",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783119819081,
+      "tag": "0002_damp_hellfire_club",
+      "breakpoints": true
     }
   ]
 }
