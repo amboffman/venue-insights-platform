@@ -108,10 +108,13 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 - [x] Golden dataset: ~25 cases (question → expected tool calls, expected
       key facts) generated from the deterministic seed (24 cases, ADR-0005)
-- [ ] Deterministic scorers: tool-selection correctness ✓, argument
-      correctness ✓, groundedness (author-owned — brief + TDD tests ready)
-- [ ] **Author implements one scorer end-to-end; Claude reviews**
-      (groundedness — see LEARNING.md "Week 5: YOUR build")
+- [x] Deterministic scorers: tool-selection correctness ✓, argument
+      correctness ✓, groundedness ✓ (all 11 TDD tests green)
+- [x] ~~Author implements one scorer end-to-end; Claude reviews~~ — author
+      built the extract/match core through the money tests, then explicitly
+      handed groundedness back to Claude (2026-07-03). Review flow inverted:
+      Claude walks the code, author must pass the drill before merge
+      (LEARNING.md "Slice 5")
 - [x] Vitest eval runner + a report artifact (JSON or markdown) per run
       (`pnpm eval` → eval-reports/run-*.{json,md}; never in CI)
 
