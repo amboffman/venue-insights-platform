@@ -64,4 +64,4 @@ The author chose **mixed ownership** (2026-07-01):
 - pnpm is pinned via `packageManager`. Secrets live in `.env.local`
   (gitignored); mirror new variables into `.env.example` with a comment.
 - Evals cost API tokens: never wire them into CI. CI runs
-  typecheck/lint/format/test only.
+  typecheck/lint/format/test/build — nothing that calls the Claude API.

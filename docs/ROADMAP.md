@@ -51,38 +51,44 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 1 (Jul 1–7) — Data foundation
 
-- [ ] ADR-001: data model + Drizzle confirmation (entities: brands,
+- [x] ADR-001: data model + Drizzle confirmation (entities: brands,
       locations, reviews, daily_metrics; single-tenant; discuss what a
       locator-app veteran would recognize as realistic)
-- [ ] Supabase project created; `DATABASE_URL` etc. in `.env.local`
-      (author does this — account setup can't be delegated)
-- [ ] Drizzle schema + migrations for the core entities
-- [ ] Deterministic seed script (`pnpm seed`, seeded RNG, ~5 brands /
+- [x] Supabase project created; `DATABASE_URL` etc. in `.env.local`
+      (author does this — account setup can't be delegated), then
+      `pnpm db:migrate && pnpm seed` against it (seeded 2026-07-02:
+      5 brands / 50 locations / 733 reviews / 17,330 metric rows)
+- [x] Drizzle schema + migrations for the core entities
+- [x] Deterministic seed script (`pnpm seed`, seeded RNG, ~5 brands /
       ~50 locations / reviews + 12 months of daily metrics)
-- [ ] 3–4 typed query functions in `lib/db` with unit tests
+- [x] 3–4 typed query functions in `lib/db` with unit tests
 
 **Demo:** seeded database; query tests green.
 
 ### Week 2 (Jul 8–14) — Tools + tool-calling loop
 
-- [ ] 4 tools in `lib/mcp` as pure functions with schema-validated inputs:
+- [x] 4 tools in `lib/mcp` as pure functions with schema-validated inputs:
       `search_locations`, `get_location_details`, `aggregate_metrics`,
       `compare_locations`
-- [ ] ADR-002: raw Anthropic SDK vs Vercel AI SDK (record the learning
+- [x] ADR-002: raw Anthropic SDK vs Vercel AI SDK (record the learning
       rationale and what it costs us)
-- [ ] Non-streaming tool-use loop in `lib/ai`: question → Claude → tool
+- [x] Non-streaming tool-use loop in `lib/ai`: question → Claude → tool
       calls → tool results → grounded answer; tested with a mocked client
-- [ ] Throwaway harness (script or route) to ask questions from the terminal
+- [x] Throwaway harness (script or route) to ask questions from the terminal
+      (`pnpm ask "…"` — needs `DATABASE_URL` + `ANTHROPIC_API_KEY` for the
+      live demo)
 
 **Demo:** plain-English question → grounded, tool-backed answer in the terminal.
 
 ### Week 3 (Jul 15–21) — Streaming chat + deploy ⚑ go/no-go
 
-- [ ] Streaming route handler (read the vendored Next 16 docs first —
-      streaming/route-handler APIs changed from training data)
-- [ ] Chat page: message list, input, streamed assistant responses, visible
+- [x] Streaming route handler (read the vendored Next 16 docs first —
+      streaming/route-handler APIs changed from training data) — NDJSON
+      typed events, ADR-0003
+- [x] Chat page: message list, input, streamed assistant responses, visible
       tool-call activity (even if just "Searching locations…")
-- [ ] Deploy to Vercel; add `pnpm build` to CI
+- [ ] Deploy to Vercel (author connects repo + env vars); `pnpm build` added
+      to CI ✓
 - [ ] **Checkpoint (Jul 21):** if the spine is not deployed, cut Week 7 (MCP)
       now and shift everything up one week.
 
@@ -90,21 +96,24 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 4 (Jul 22–28) — Generative UI
 
-- [ ] Component registry: tool name → typed renderer (`LocationCard`,
-      `ComparisonTable`, `MetricsSummary`)
-- [ ] Chat renders tool results through the registry instead of prose-only
-- [ ] ADR-003: deterministic generative UI (registry) vs model-generated markup
+- [x] Component registry: tool name → typed renderer (`LocationCard`,
+      `ComparisonTable`, `MetricsSummary`, + `LocationList`)
+- [x] Chat renders tool results through the registry instead of prose-only
+- [x] ADR-0004: deterministic generative UI (registry) vs model-generated
+      markup (numbered 0004 — 0003 became the streaming chat protocol)
 
 **Demo:** "compare downtown locations by revenue" → a real table in the chat.
 
 ### Week 5 (Jul 29–Aug 4) — Eval harness v1 👤 author-owned slice
 
-- [ ] Golden dataset: ~25 cases (question → expected tool calls, expected
-      key facts) generated from the deterministic seed
-- [ ] Deterministic scorers: tool-selection correctness, argument
-      correctness, groundedness (numbers in the answer appear in tool results)
+- [x] Golden dataset: ~25 cases (question → expected tool calls, expected
+      key facts) generated from the deterministic seed (24 cases, ADR-0005)
+- [ ] Deterministic scorers: tool-selection correctness ✓, argument
+      correctness ✓, groundedness (author-owned — brief + TDD tests ready)
 - [ ] **Author implements one scorer end-to-end; Claude reviews**
-- [ ] Vitest eval runner + a report artifact (JSON or markdown) per run
+      (groundedness — see LEARNING.md "Week 5: YOUR build")
+- [x] Vitest eval runner + a report artifact (JSON or markdown) per run
+      (`pnpm eval` → eval-reports/run-*.{json,md}; never in CI)
 
 **Demo:** `pnpm eval` → scored report showing where the agent fails.
 

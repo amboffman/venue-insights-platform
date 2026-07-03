@@ -1,0 +1,9 @@
+# Force LF in the working tree for all text files, on every platform.
+# Without this, git's autocrlf converts checkouts to CRLF on Windows and
+# Prettier (endOfLine: lf) then flags every checked-out file.
+* text=auto eol=lf
+
+# Binary assets — never convert.
+*.png binary
+*.ico binary
+*.woff2 binary
