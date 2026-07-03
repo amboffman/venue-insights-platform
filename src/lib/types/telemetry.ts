@@ -18,3 +18,33 @@ export interface SpanRecord {
   statusMessage: string | null;
   attributes: Record<string, unknown>;
 }
+
+/** One root span (= one question/turn), aggregated for the dashboard. */
+export interface TurnSummary {
+  traceId: string;
+  /** which loop produced it — "ask" (terminal/evals) or "chat" (web UI) */
+  kind: "ask" | "chat" | "other";
+  startedAt: Date;
+  durationMs: number;
+  status: SpanStatus;
+  inputTokens: number;
+  outputTokens: number;
+  /** null when the model had no pricing entry — shown as "—", never guessed */
+  costMicroUsd: number | null;
+  toolCalls: number;
+  evalRunId: string | null;
+  evalCaseId: string | null;
+}
+
+/** One `pnpm eval` invocation, aggregated across its case turns. */
+export interface EvalRunSummary {
+  runId: string;
+  startedAt: Date;
+  caseCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostMicroUsd: number;
+  /** summed model time across cases (they run concurrently, so this is
+   * compute time, not wall clock — same semantics as the eval report) */
+  totalDurationMs: number;
+}

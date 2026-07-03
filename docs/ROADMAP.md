@@ -126,11 +126,11 @@ decision was made, checkbox updated here, and the explain-back conversation
       and every tool invocation (name, duration, outcome) — ADR-0006;
       turn → {chat, execute_tool} trace trees, GenAI semconv attrs, cost in
       integer µ$
-- [ ] Spans persisted (Postgres table is fine) — table + exporter + route/
-      eval wiring done and PGlite-tested; ☐ apply migration to Supabase
-      (`pnpm db:migrate`) to go live
-- [ ] `/observability` page: cost + latency table per conversation and per
-      eval run. Charts are stretch, not scope.
+- [x] Spans persisted (Postgres table is fine) — spans table + Postgres
+      exporter through lib/db; migration applied to Supabase 2026-07-03
+- [x] `/observability` page: cost + latency table per conversation and per
+      eval run (tiles + two tables; force-dynamic server component reading
+      lib/db aggregates). Charts remain stretch, not scope.
 - [ ] **Checkpoint (Aug 11):** if the eval harness isn't done, cut Week 7
       (MCP) and spend it finishing evals + observability.
 
