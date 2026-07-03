@@ -54,6 +54,18 @@ function avgTicketCents(totalRevenueCents: number, totalTransactions: number): n
   return totalTransactions > 0 ? Math.round(totalRevenueCents / totalTransactions) : null;
 }
 
+/** The rating precision rule, in exactly one place — the eval golden data
+ * imports this so expected ratings can never drift from the SQL's rounding. */
+export function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+// Model-supplied filter text goes into ILIKE patterns; without escaping, a
+// stray % or _ acts as a wildcard ("%" as a city matches every location).
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
 export interface SearchLocationsFilters {
   /** case-insensitive substring match on location name */
   query?: string;
@@ -73,15 +85,15 @@ export async function searchLocations(
 ): Promise<LocationSummary[]> {
   const conditions = [];
   if (filters.query) {
-    conditions.push(ilike(locations.name, `%${filters.query}%`));
+    conditions.push(ilike(locations.name, `%${escapeLike(filters.query)}%`));
   }
   if (filters.brandSlug) {
     conditions.push(eq(brands.slug, filters.brandSlug));
   }
   if (filters.city) {
-    // ilike without wildcards = case-insensitive equality; the model will
-    // pass user-typed city names.
-    conditions.push(ilike(locations.city, filters.city));
+    // escaped ilike = case-insensitive equality; the model will pass
+    // user-typed city names.
+    conditions.push(ilike(locations.city, escapeLike(filters.city)));
   }
   if (filters.state) {
     conditions.push(eq(locations.state, filters.state.toUpperCase()));
@@ -138,7 +150,7 @@ export async function getLocationDetails(
   return {
     ...location,
     reviewCount: stats?.reviewCount ?? 0,
-    avgRating: stats?.avgRating == null ? null : Math.round(Number(stats.avgRating) * 100) / 100,
+    avgRating: stats?.avgRating == null ? null : round2(Number(stats.avgRating)),
     recentReviews,
   };
 }
@@ -156,11 +168,26 @@ export async function aggregateMetrics(
   db: Database,
   input: AggregateMetricsInput,
 ): Promise<MetricsAggregate> {
+  // An explicitly empty location set means "these zero locations", not
+  // "no filter" — silently widening to the whole portfolio would hand the
+  // model grounded-looking numbers for a set that matched nothing.
+  if (input.locationIds && input.locationIds.length === 0) {
+    return {
+      from: input.from,
+      to: input.to,
+      locationCount: 0,
+      totalRevenueCents: 0,
+      totalTransactions: 0,
+      totalFootTraffic: 0,
+      avgTicketCents: null,
+    };
+  }
+
   const conditions = [gte(dailyMetrics.date, input.from), lte(dailyMetrics.date, input.to)];
   if (input.brandSlug) {
     conditions.push(eq(brands.slug, input.brandSlug));
   }
-  if (input.locationIds && input.locationIds.length > 0) {
+  if (input.locationIds) {
     conditions.push(inArray(dailyMetrics.locationId, input.locationIds));
   }
 
@@ -260,7 +287,7 @@ export async function compareLocations(
         totalTransactions,
         totalFootTraffic: metrics?.totalFootTraffic ?? 0,
         avgTicketCents: avgTicketCents(totalRevenueCents, totalTransactions),
-        avgRating: rating == null ? null : Math.round(Number(rating) * 100) / 100,
+        avgRating: rating == null ? null : round2(Number(rating)),
       };
     })
     .sort((a, b) => b.totalRevenueCents - a.totalRevenueCents);

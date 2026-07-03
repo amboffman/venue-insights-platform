@@ -9,7 +9,7 @@ import { config } from "dotenv";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { askQuestion } from "../src/lib/ai/tool-loop";
-import { getDb } from "../src/lib/db/client";
+import { closeDb, getDb } from "../src/lib/db/client";
 
 config({ path: ".env.local" });
 
@@ -43,8 +43,10 @@ async function main(): Promise<void> {
 }
 
 main()
-  .then(() => process.exit(0))
   .catch((error) => {
     console.error(error);
-    process.exit(1);
-  });
+    process.exitCode = 1;
+  })
+  // Close the pool and exit naturally — process.exit can truncate stdout
+  // still buffered in a pipe on Windows.
+  .finally(() => closeDb());

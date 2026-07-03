@@ -8,7 +8,7 @@ import {
   DEFAULT_MODEL,
   SYSTEM_PROMPT,
   anthropicTools,
-  executeToolUse,
+  executeToolUses,
 } from "./shared";
 
 // Streaming variant of the tool loop: same wire contract as tool-loop.ts
@@ -16,6 +16,10 @@ import {
 // results, is_error feedback, pause_turn resume, iteration cap), but text
 // arrives as deltas and tool activity is surfaced as it happens. Consumed by
 // the /api/chat route, which serializes the events as NDJSON (ADR-0003).
+
+// pause_turn resumes don't consume the tool budget, but a pathological
+// pause loop must still terminate.
+const MAX_PAUSE_ROUNDS = 8;
 
 /** One in-flight streaming API round: text deltas while the model talks,
  * then the complete message. Tests fake this; production wraps the SDK's
@@ -25,15 +29,25 @@ export interface MessageStreamHandle {
   finalMessage(): Promise<Anthropic.Message>;
 }
 
+export interface StreamRequestOptions {
+  /** aborts the underlying HTTP request (client disconnected) */
+  signal?: AbortSignal;
+}
+
 export interface StreamingClaudeClient {
-  streamMessage(params: Anthropic.MessageCreateParamsNonStreaming): MessageStreamHandle;
+  streamMessage(
+    params: Anthropic.MessageCreateParamsNonStreaming,
+    options?: StreamRequestOptions,
+  ): MessageStreamHandle;
 }
 
 /** Adapts a real Anthropic client to the loop's narrow interface. */
 export function anthropicStreamingClient(client: Anthropic): StreamingClaudeClient {
   return {
-    streamMessage(params) {
-      const stream = client.messages.stream(params);
+    streamMessage(params, options) {
+      // Forwarding the signal lets a client disconnect abort the in-flight
+      // API request instead of letting it stream (and bill) to completion.
+      const stream = client.messages.stream(params, { signal: options?.signal });
       return {
         textDeltas: (async function* () {
           for await (const event of stream) {
@@ -57,6 +71,8 @@ export interface StreamOptions {
   model?: string;
   maxTokens?: number;
   maxToolIterations?: number;
+  /** propagated to every API round; abort ends the loop */
+  signal?: AbortSignal;
 }
 
 /** History is client-supplied text turns (ADR-0003): the server is
@@ -80,17 +96,21 @@ export async function* streamAnswer(
 
   let response: Anthropic.Message | null = null;
   let iterations = 0;
+  let pauseRounds = 0;
 
   try {
-    while (iterations < maxToolIterations) {
+    while (iterations - pauseRounds < maxToolIterations && pauseRounds <= MAX_PAUSE_ROUNDS) {
       iterations++;
-      const stream = deps.client.streamMessage({
-        model,
-        max_tokens: maxTokens,
-        system: SYSTEM_PROMPT,
-        tools,
-        messages,
-      });
+      const stream = deps.client.streamMessage(
+        {
+          model,
+          max_tokens: maxTokens,
+          system: SYSTEM_PROMPT,
+          tools,
+          messages,
+        },
+        { signal: options.signal },
+      );
 
       for await (const text of stream.textDeltas) {
         yield { type: "text_delta", text };
@@ -100,11 +120,16 @@ export async function* streamAnswer(
       usage.outputTokens += response.usage.output_tokens;
 
       if (response.stop_reason === "pause_turn") {
+        pauseRounds++;
         messages.push({ role: "assistant", content: response.content });
         continue;
       }
 
       if (response.stop_reason !== "tool_use") break;
+
+      // Executing tools we can never report back (budget exhausted) is
+      // wasted DB work and misleading UI — stop before running them.
+      if (iterations - pauseRounds >= maxToolIterations) break;
 
       messages.push({ role: "assistant", content: response.content });
 
@@ -112,20 +137,22 @@ export async function* streamAnswer(
         (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
       );
 
-      const results: Anthropic.ToolResultBlockParam[] = [];
+      // Announce every call up front, execute them concurrently (read-only
+      // queries), then report results in block order.
       for (const block of toolUseBlocks) {
         yield { type: "tool_start", name: block.name, input: block.input };
-        const executed = await executeToolUse(deps.db, block);
+      }
+      const executed = await executeToolUses(deps.db, toolUseBlocks);
+      for (const { record } of executed) {
         yield {
           type: "tool_result",
-          name: block.name,
-          ok: executed.record.ok,
-          ...(executed.record.ok ? { output: executed.output } : { error: executed.record.error }),
+          name: record.name,
+          ok: record.ok,
+          ...(record.ok ? { output: record.output } : { error: record.error }),
         };
-        results.push(executed.resultBlock);
       }
 
-      messages.push({ role: "user", content: results });
+      messages.push({ role: "user", content: executed.map((e) => e.resultBlock) });
     }
 
     yield {

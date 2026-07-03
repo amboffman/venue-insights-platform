@@ -11,7 +11,10 @@ export type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 // Cached on globalThis because Next dev re-evaluates modules on HMR, which
 // would otherwise leak a connection pool per reload.
-const globalForDb = globalThis as unknown as { __mlipDb?: Database };
+const globalForDb = globalThis as unknown as {
+  __mlipDb?: Database;
+  __mlipSql?: ReturnType<typeof postgres>;
+};
 
 export function getDb(): Database {
   if (!globalForDb.__mlipDb) {
@@ -22,7 +25,16 @@ export function getDb(): Database {
     // prepare: false — Supabase's transaction pooler (pgBouncer) does not
     // support prepared statements.
     const client = postgres(url, { prepare: false });
+    globalForDb.__mlipSql = client;
     globalForDb.__mlipDb = drizzle(client, { schema });
   }
   return globalForDb.__mlipDb;
+}
+
+/** Close the pool so one-shot processes (eval runs, scripts) exit cleanly.
+ * The Next server never calls this. */
+export async function closeDb(): Promise<void> {
+  await globalForDb.__mlipSql?.end();
+  globalForDb.__mlipSql = undefined;
+  globalForDb.__mlipDb = undefined;
 }

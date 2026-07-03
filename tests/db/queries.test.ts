@@ -2,10 +2,7 @@
 // PGlite is WASM Postgres running in-process: these tests apply the real
 // generated migrations and the real seed data, so they cover the SQL, the
 // schema, and the migration files together — no credentials needed.
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { Database } from "@/lib/db/client";
 import {
@@ -14,12 +11,13 @@ import {
   getLocationDetails,
   searchLocations,
 } from "@/lib/db/queries";
-import * as schema from "@/lib/db/schema";
 import { SEED_END_DATE, generateSeedData, type DailyMetricInsert } from "@/lib/db/seed-data";
+import { createSeededDb, type SeededDb } from "../helpers/seeded-db";
 
 const seed = generateSeedData();
 const WINDOW_START = "2025-07-01";
 
+let seeded: SeededDb;
 let db: Database;
 
 function sumMetrics(rows: DailyMetricInsert[]) {
@@ -34,22 +32,11 @@ function sumMetrics(rows: DailyMetricInsert[]) {
 }
 
 beforeAll(async () => {
-  const client = new PGlite();
-  const pglite = drizzle(client, { schema });
-  await migrate(pglite, { migrationsFolder: "src/lib/db/migrations" });
-  db = pglite as unknown as Database;
-
-  const insertChunked = async <T>(insert: (rows: T[]) => Promise<unknown>, rows: T[]) => {
-    for (let i = 0; i < rows.length; i += 2000) {
-      await insert(rows.slice(i, i + 2000));
-    }
-  };
-
-  await insertChunked((r) => pglite.insert(schema.brands).values(r), seed.brands);
-  await insertChunked((r) => pglite.insert(schema.locations).values(r), seed.locations);
-  await insertChunked((r) => pglite.insert(schema.reviews).values(r), seed.reviews);
-  await insertChunked((r) => pglite.insert(schema.dailyMetrics).values(r), seed.dailyMetrics);
+  seeded = await createSeededDb();
+  db = seeded.db;
 }, 120_000);
+
+afterAll(() => seeded.close());
 
 describe("searchLocations", () => {
   it("returns at most the default limit, sorted by name", async () => {
@@ -164,6 +151,17 @@ describe("aggregateMetrics", () => {
 
     expect(result.totalRevenueCents).toBe(expected.revenue);
     expect(result.totalTransactions).toBe(expected.transactions);
+  });
+
+  it("returns zeros for an explicitly empty location set instead of widening to the portfolio", async () => {
+    const result = await aggregateMetrics(db, {
+      from: WINDOW_START,
+      to: SEED_END_DATE,
+      locationIds: [],
+    });
+    expect(result.totalRevenueCents).toBe(0);
+    expect(result.locationCount).toBe(0);
+    expect(result.avgTicketCents).toBeNull();
   });
 
   it("returns zeros and a null avg ticket for an empty range", async () => {
