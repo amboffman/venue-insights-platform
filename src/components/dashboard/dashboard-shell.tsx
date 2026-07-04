@@ -84,7 +84,7 @@ export function DashboardShell(props: DashboardShellProps) {
             </p>
           </div>
           <nav className="flex gap-3 text-xs text-muted-foreground">
-            <Link className="hover:text-foreground" href="/">
+            <Link className="hover:text-foreground" href="/chat">
               Chat
             </Link>
             <Link className="hover:text-foreground" href="/observability">

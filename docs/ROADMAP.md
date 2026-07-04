@@ -161,6 +161,8 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Pulled forward from Week 9 buffer (2026-07-03) — stakeholder dashboard
 
+- [x] Dashboard promoted to the homepage (`/`; chat moved to `/chat`,
+      `/dashboard` redirects) — a stakeholder lands on the data
 - [x] `/dashboard` (ADR-0009, option C of three presented): KPI tiles,
       revenue-by-brand bars + monthly trend line (dataviz method, palette
       validated against our surfaces), top-locations table, URL-state
