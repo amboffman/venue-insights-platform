@@ -1,29 +1,88 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 
-import { Chat } from "@/components/chat/chat";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { getDb } from "@/lib/db/client";
+import {
+  brandOptions,
+  cityOptions,
+  dashboardKpis,
+  monthlyRevenue,
+  revenueByBrand,
+  topLocations,
+} from "@/lib/db/dashboard";
+import { SEED_END_DATE, SEED_START_DATE } from "@/lib/db/seed-data";
+import type { DashboardViewContext } from "@/lib/types/chat";
 
-export default function Home() {
+// The dashboard IS the homepage: a stakeholder lands on the data, with the
+// AI analyst one glance away (chat lives at /chat for focused sessions).
+// Data changes per request (and per filter), so this page must never be
+// statically prerendered — same reasoning as /observability.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export const metadata: Metadata = { title: "Venue Insights — Portfolio dashboard" };
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function first(param: string | string[] | undefined): string | undefined {
+  return Array.isArray(param) ? param[0] : param;
+}
+
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const db = getDb();
+
+  // Options first: URL params are untrusted, so brand/city are only
+  // accepted when they exist in the seeded vocabulary.
+  const [brands, cities] = await Promise.all([brandOptions(db), cityOptions(db)]);
+
+  const rawFrom = first(sp.from);
+  const rawTo = first(sp.to);
+  let from = rawFrom && ISO_DATE.test(rawFrom) ? rawFrom : SEED_START_DATE;
+  let to = rawTo && ISO_DATE.test(rawTo) ? rawTo : SEED_END_DATE;
+  if (from > to) [from, to] = [to, from];
+
+  const rawBrand = first(sp.brand);
+  const brandSlug = brands.some((b) => b.slug === rawBrand) ? rawBrand : undefined;
+  const rawCity = first(sp.city);
+  const city = cities.some((c) => c.city === rawCity) ? rawCity : undefined;
+
+  const filters = { from, to, brandSlug, city };
+  const [kpis, byBrand, monthly, topRows] = await Promise.all([
+    dashboardKpis(db, filters),
+    revenueByBrand(db, filters),
+    monthlyRevenue(db, filters),
+    topLocations(db, filters),
+  ]);
+
+  const viewContext: DashboardViewContext = {
+    from,
+    to,
+    brandSlug: brandSlug ?? null,
+    city: city ?? null,
+  };
+  const brandName = brands.find((b) => b.slug === brandSlug)?.name;
+  const viewContextLabel = [
+    brandName ?? "All brands",
+    city ?? "All cities",
+    `${from} → ${to}`,
+  ].join(" · ");
+
   return (
-    <div className="flex h-dvh flex-col">
-      <header className="border-b px-4 py-3">
-        <div className="mx-auto flex w-full max-w-2xl items-baseline justify-between">
-          <h1 className="text-base font-semibold tracking-tight">Venue Insights</h1>
-          <nav className="flex items-baseline gap-3 text-xs">
-            <span className="hidden text-muted-foreground sm:inline">
-              5 brands · 50 locations · tool-grounded answers
-            </span>
-            <Link className="text-muted-foreground hover:text-foreground" href="/dashboard">
-              Dashboard
-            </Link>
-            <Link className="text-muted-foreground hover:text-foreground" href="/observability">
-              Observability
-            </Link>
-          </nav>
-        </div>
-      </header>
-      <main className="flex min-h-0 flex-1 flex-col">
-        <Chat />
-      </main>
-    </div>
+    <DashboardShell
+      kpis={kpis}
+      brandRevenue={byBrand}
+      monthly={monthly}
+      topRows={topRows}
+      brands={brands}
+      cities={cities}
+      filters={filters}
+      viewContext={viewContext}
+      viewContextLabel={viewContextLabel}
+    />
   );
 }

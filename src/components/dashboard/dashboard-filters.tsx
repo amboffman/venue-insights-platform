@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { SEED_END_DATE, SEED_START_DATE } from "@/lib/db/seed-data";
 import type { BrandOption, CityOption } from "@/lib/types/dashboard";
@@ -38,6 +38,9 @@ export function DashboardFilters({
   value: FilterValue;
 }) {
   const router = useRouter();
+  // Not hardcoded to a route: the dashboard moved from /dashboard to "/"
+  // once already — the filters follow wherever the page is mounted.
+  const pathname = usePathname();
 
   function navigate(next: FilterValue) {
     const params = new URLSearchParams();
@@ -45,7 +48,7 @@ export function DashboardFilters({
     params.set("to", next.to);
     if (next.brandSlug) params.set("brand", next.brandSlug);
     if (next.city) params.set("city", next.city);
-    router.replace(`/dashboard?${params.toString()}`, { scroll: false });
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
   const activePreset =

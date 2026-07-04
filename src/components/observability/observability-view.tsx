@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { EvalRunSummary, TurnSummary } from "@/lib/types/telemetry";
 
 import { formatDurationMs, formatMicroUsd, formatTokens, formatWhen } from "./format";
@@ -114,12 +116,22 @@ export function ObservabilityView({
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold">Observability</h1>
-        <p className="text-sm text-muted-foreground">
-          Cost and latency per turn and per eval run, read from the spans table (ADR-0006). Showing
-          the {turns.length} most recent turns.
-        </p>
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold">Observability</h1>
+          <p className="text-sm text-muted-foreground">
+            Cost and latency per turn and per eval run, read from the spans table (ADR-0006).
+            Showing the {turns.length} most recent turns.
+          </p>
+        </div>
+        <nav className="flex gap-3 text-xs text-muted-foreground">
+          <Link className="hover:text-foreground" href="/">
+            Dashboard
+          </Link>
+          <Link className="hover:text-foreground" href="/chat">
+            Chat
+          </Link>
+        </nav>
       </header>
 
       <section aria-label="totals" className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
