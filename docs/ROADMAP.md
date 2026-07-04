@@ -171,12 +171,15 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 ### Week 8 (Aug 19–25) — Writeup + polish (feature freeze Aug 25)
 
-- [ ] Portfolio writeup drafted from the ADRs (architecture narrative,
-      tradeoffs, eval results with real numbers)
-- [ ] README: demo GIF, architecture diagram, honest eval-results section
-- [ ] Interview talking points doc: for each ADR, the "why X over Y" answer
-      in the author's own words
-- [ ] LLM-judge scorer (stretch, only if weeks 5–7 fully landed)
+- [x] Portfolio writeup drafted from the ADRs (docs/writeup.md —
+      architecture narrative, tradeoffs, eval results with the real
+      2026-07-03 numbers + failure taxonomy)
+- [x] README: architecture diagram (mermaid), honest eval-results section,
+      live URL, demo script — ☐ author records docs/demo.gif
+- [ ] Interview talking points doc: scaffolded (TALKING_POINTS.md,
+      gitignored) with per-ADR probes + the Slice 6 re-probe and Slice 7
+      recreation debts embedded — **author fills in own words**
+- [ ] LLM-judge scorer (stretch — unlocked, weeks 5–7 fully landed)
 
 ### Week 9 (Aug 26–Sept 1) — Buffer
 
