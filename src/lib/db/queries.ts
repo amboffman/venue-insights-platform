@@ -47,7 +47,8 @@ const locationSummaryColumns = {
 
 // Postgres sum() over int returns bigint, which the driver hands back as a
 // string; coalesce + mapWith(Number) gives a real 0-defaulted JS number.
-const sumAsNumber = (column: AnyPgColumn) =>
+// Exported: the dashboard rollups (dashboard.ts) share the same rule.
+export const sumAsNumber = (column: AnyPgColumn) =>
   sql<number>`coalesce(sum(${column}), 0)`.mapWith(Number);
 
 function avgTicketCents(totalRevenueCents: number, totalTransactions: number): number | null {

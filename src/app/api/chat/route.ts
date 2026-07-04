@@ -8,7 +8,7 @@ import { hitRateLimit } from "@/lib/db/rate-limit";
 import { sumChatCostMicroUsdSince } from "@/lib/db/spans";
 import { flushTelemetry, initTelemetry } from "@/lib/telemetry/provider";
 import type { ChatStreamEvent } from "@/lib/types/chat";
-import { MAX_CHAT_TURNS, MAX_TURN_CHARS } from "@/lib/types/chat";
+import { MAX_CHAT_TURNS, MAX_TURN_CHARS, formatViewContext } from "@/lib/types/chat";
 
 // postgres-js needs Node APIs — this route cannot run on the edge runtime.
 export const runtime = "nodejs";
@@ -59,6 +59,8 @@ async function* withTelemetryFlush(
 
 // Limits come from the shared wire contract — the client trims/truncates to
 // the same constants before sending, so a well-behaved client never 400s.
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 const bodySchema = z.object({
   turns: z
     .array(
@@ -69,6 +71,15 @@ const bodySchema = z.object({
     )
     .min(1)
     .max(MAX_CHAT_TURNS),
+  // Dashboard filter state (ADR-0009) — optional; plain chat sends none.
+  viewContext: z
+    .object({
+      from: isoDate,
+      to: isoDate,
+      brandSlug: z.string().min(1).max(100).nullable(),
+      city: z.string().min(1).max(100).nullable(),
+    })
+    .optional(),
 });
 
 export async function POST(request: Request) {
@@ -80,7 +91,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { turns } = parsed.data;
+  const { turns, viewContext } = parsed.data;
   if (turns.at(-1)?.role !== "user") {
     return Response.json({ error: "The last turn must be a user message." }, { status: 400 });
   }
@@ -115,9 +126,22 @@ export async function POST(request: Request) {
     );
   }
 
+  // The dashboard's filter state rides the LAST user turn — never the
+  // system prompt, which must stay byte-stable for caching (ADR-0002).
+  // The prefix is ~150 chars, injected after validation on purpose: the
+  // wire-contract turn cap applies to what the CLIENT sends.
+  let promptTurns = turns;
+  if (viewContext) {
+    const last = turns[turns.length - 1]!;
+    promptTurns = [
+      ...turns.slice(0, -1),
+      { ...last, content: `${formatViewContext(viewContext)}\n\n${last.content}` },
+    ];
+  }
+
   const events = streamAnswer(
     { client: anthropicStreamingClient(new Anthropic()), db },
-    turns,
+    promptTurns,
     // Client disconnect aborts the in-flight Anthropic request instead of
     // letting it stream (and bill) to completion.
     { signal: request.signal },
