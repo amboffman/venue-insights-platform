@@ -14,6 +14,31 @@ export interface ChatTurn {
 export const MAX_CHAT_TURNS = 20;
 export const MAX_TURN_CHARS = 8000;
 
+// ── dashboard view context (ADR-0009) ────────────────────────────────────
+// The dashboard's filter state travels WITH each chat request so the AI
+// sees what the stakeholder sees. It rides the last user turn, not the
+// system prompt — the system prompt must stay byte-stable for caching.
+
+export interface DashboardViewContext {
+  /** ISO dates (YYYY-MM-DD), inclusive */
+  from: string;
+  to: string;
+  brandSlug: string | null;
+  city: string | null;
+}
+
+/** Deterministic context line the route prefixes onto the last user turn.
+ * Lives in the wire-contract module so client and route can never drift. */
+export function formatViewContext(view: DashboardViewContext): string {
+  const parts = [`dates ${view.from} to ${view.to}`];
+  if (view.brandSlug) parts.push(`brand "${view.brandSlug}"`);
+  if (view.city) parts.push(`city "${view.city}"`);
+  return (
+    `[Dashboard context: the user is looking at data filtered to ` +
+    `${parts.join(", ")}. Answer for this view unless they ask otherwise.]`
+  );
+}
+
 export type ChatStreamEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; name: string; input: unknown }

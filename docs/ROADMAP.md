@@ -159,6 +159,14 @@ decision was made, checkbox updated here, and the explain-back conversation
 
 **Demo:** Claude Desktop answering questions via the MCP server against our DB.
 
+### Pulled forward from Week 9 buffer (2026-07-03) — stakeholder dashboard
+
+- [x] `/dashboard` (ADR-0009, option C of three presented): KPI tiles,
+      revenue-by-brand bars + monthly trend line (dataviz method, palette
+      validated against our surfaces), top-locations table, URL-state
+      brand/city/date filters — and a context-aware AI chat rail: filter
+      state rides each request, "Ask AI" buttons on every card
+
 ### Week 8 (Aug 19–25) — Writeup + polish (feature freeze Aug 25)
 
 - [ ] Portfolio writeup drafted from the ADRs (architecture narrative,

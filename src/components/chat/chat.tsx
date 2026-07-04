@@ -8,7 +8,12 @@ import { renderToolResult } from "@/components/chat/tool-views/registry";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { MAX_CHAT_TURNS, MAX_TURN_CHARS, type ChatTurn } from "@/lib/types/chat";
+import {
+  MAX_CHAT_TURNS,
+  MAX_TURN_CHARS,
+  type ChatTurn,
+  type DashboardViewContext,
+} from "@/lib/types/chat";
 
 // Client half of the chat spine. The transcript lives here (ADR-0003: the
 // server is stateless); each submit resends the visible text turns.
@@ -43,6 +48,23 @@ const SUGGESTIONS = [
   "Compare the top Copper Kettle Coffee locations by revenue.",
   "How is Verde Taqueria doing overall — revenue and customer ratings?",
 ];
+
+/** "Ask AI" from elsewhere on the page (dashboard cards, ADR-0009): a new
+ * nonce fires one send of `question`. */
+export interface AskSignal {
+  question: string;
+  nonce: number;
+}
+
+export interface ChatProps {
+  /** empty-state prompts; dashboard passes view-appropriate ones */
+  suggestions?: string[];
+  /** sent with every request so answers are scoped to the current view */
+  viewContext?: DashboardViewContext;
+  /** human-readable version of viewContext, shown as a chip */
+  viewContextLabel?: string;
+  askSignal?: AskSignal;
+}
 
 /** Build the resend history: text turns only, capped, hard-truncated to the
  * wire contract, and guaranteed to start with a user turn (the API rejects
@@ -152,11 +174,19 @@ const MessageRow = memo(function MessageRow({ message }: { message: DisplayMessa
   );
 });
 
-export function Chat() {
+export function Chat({
+  suggestions = SUGGESTIONS,
+  viewContext,
+  viewContextLabel,
+  askSignal,
+}: ChatProps = {}) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Nonce-guarded (not deps-array-driven): each signal fires exactly once,
+  // even across re-renders with the same object.
+  const lastAskNonce = useRef(0);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -210,7 +240,7 @@ export function Chat() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ turns }),
+        body: JSON.stringify(viewContext ? { turns, viewContext } : { turns }),
       });
       if (!response.ok || !response.body) {
         const detail = await response
@@ -263,6 +293,15 @@ export function Chat() {
     }
   }
 
+  // Dashboard "Ask AI" buttons submit through here; runs after render so
+  // send() sees current state. Ignored while a stream is in flight.
+  useEffect(() => {
+    if (askSignal && askSignal.nonce !== lastAskNonce.current && !streaming) {
+      lastAskNonce.current = askSignal.nonce;
+      void send(askSignal.question);
+    }
+  });
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-6">
@@ -273,7 +312,7 @@ export function Chat() {
               Answers are grounded in live tool calls against the database.
             </p>
             <div className="flex flex-col gap-2">
-              {SUGGESTIONS.map((suggestion) => (
+              {suggestions.map((suggestion) => (
                 <Button
                   key={suggestion}
                   variant="outline"
@@ -299,6 +338,13 @@ export function Chat() {
           void send(input);
         }}
       >
+        {viewContextLabel && (
+          <div className="mx-auto mb-2 w-full max-w-2xl">
+            <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] text-muted-foreground">
+              <span aria-hidden>◨</span> Answering for: {viewContextLabel}
+            </span>
+          </div>
+        )}
         <div className="mx-auto flex w-full max-w-2xl gap-2">
           <Input
             value={input}
