@@ -87,11 +87,56 @@ describe("streamAnswer", () => {
 
     await collect(streamAnswer({ client, db }, turns));
 
+    // The last turn is normalized to a block so it can carry the moving
+    // prompt-cache breakpoint (ADR-0010); earlier turns pass through as-is.
     expect(requests[0]!.messages).toEqual([
       { role: "user", content: "How many locations are in Austin?" },
       { role: "assistant", content: "Austin has 5 locations." },
-      { role: "user", content: "And which earns the most?" },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "And which earns the most?",
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+      },
     ]);
+  });
+
+  it("marks the prompt-cache breakpoints: system block + last message block only", async () => {
+    const { client, requests } = fakeStreamingClient([
+      {
+        deltas: [],
+        final: finalMessage([toolUseBlock("tu_1", "search_locations", {})], "tool_use"),
+      },
+      { deltas: [], final: finalMessage([textBlock("Done.")], "end_turn") },
+    ]);
+
+    await collect(streamAnswer({ client, db }, ask("Anything in Austin?")));
+
+    for (const request of requests) {
+      // System carries the prefix breakpoint (it also covers tools — the
+      // prompt renders tools → system → messages).
+      const system = request.system as { cache_control?: unknown }[];
+      expect(system.at(-1)!.cache_control).toEqual({ type: "ephemeral" });
+
+      // Exactly one message-side breakpoint, on the very last block —
+      // markers must not accumulate across rounds (API max is 4).
+      const marked: string[] = [];
+      for (const [i, message] of request.messages.entries()) {
+        const blocks = Array.isArray(message.content) ? message.content : [];
+        for (const [j, block] of blocks.entries()) {
+          if ((block as { cache_control?: unknown }).cache_control) marked.push(`${i}:${j}`);
+        }
+      }
+      const lastMessage = request.messages.at(-1)!;
+      const lastBlockIndex = Array.isArray(lastMessage.content)
+        ? lastMessage.content.length - 1
+        : 0;
+      expect(marked).toEqual([`${request.messages.length - 1}:${lastBlockIndex}`]);
+    }
   });
 
   it("reports tool failures as non-ok results and lets the model recover", async () => {

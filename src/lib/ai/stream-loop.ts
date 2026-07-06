@@ -16,9 +16,10 @@ import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_MAX_TOOL_ITERATIONS,
   DEFAULT_MODEL,
-  SYSTEM_PROMPT,
   anthropicTools,
   executeToolUses,
+  messagesWithCacheBreakpoint,
+  systemBlocks,
 } from "./shared";
 
 // Streaming variant of the tool loop: same wire contract as tool-loop.ts
@@ -104,7 +105,12 @@ export async function* streamAnswer(
 
   const tools = anthropicTools();
   const messages = turnsToMessages(turns);
-  const usage = { inputTokens: 0, outputTokens: 0 };
+  const usage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
+  };
 
   let response: Anthropic.Message | null = null;
   let iterations = 0;
@@ -125,9 +131,9 @@ export async function* streamAnswer(
         {
           model,
           max_tokens: maxTokens,
-          system: SYSTEM_PROMPT,
+          system: systemBlocks(),
           tools,
-          messages,
+          messages: messagesWithCacheBreakpoint(messages),
         },
         { signal: options.signal },
       );
@@ -140,11 +146,15 @@ export async function* streamAnswer(
         model,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
+        cacheReadInputTokens: response.usage.cache_read_input_tokens ?? 0,
+        cacheCreationInputTokens: response.usage.cache_creation_input_tokens ?? 0,
         stopReason: response.stop_reason,
       });
       callSpan = null;
       usage.inputTokens += response.usage.input_tokens;
       usage.outputTokens += response.usage.output_tokens;
+      usage.cacheReadInputTokens += response.usage.cache_read_input_tokens ?? 0;
+      usage.cacheCreationInputTokens += response.usage.cache_creation_input_tokens ?? 0;
 
       if (response.stop_reason === "pause_turn") {
         pauseRounds++;
@@ -186,7 +196,9 @@ export async function* streamAnswer(
 
     yield {
       type: "done",
-      usage,
+      // Only the wire-contract fields — cache token counts are a cost
+      // detail that stays server-side (telemetry has them per span).
+      usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
       stopReason: response?.stop_reason ?? null,
     };
   } catch (error) {

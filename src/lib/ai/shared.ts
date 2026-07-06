@@ -40,6 +40,54 @@ export function anthropicTools(): Anthropic.Tool[] {
   return cachedTools;
 }
 
+// ── prompt caching (ADR-0010) ────────────────────────────────────────────
+// The byte-stable prefix was always DESIGNED to be cacheable (ADR-0002),
+// but Anthropic caching is opt-in: without explicit cache_control markers
+// every round re-billed the full prefix + history at the full input rate.
+// Two breakpoints (max 4 allowed):
+//   1. the system block — the prompt renders tools → system → messages, so
+//      this one marker caches the tool schemas AND the system prompt;
+//   2. the last content block of the last message — so round N+1 of a tool
+//      turn re-reads round N's entire history at ~0.1× instead of 1×.
+
+const EPHEMERAL_CACHE = { type: "ephemeral" as const };
+
+/** The system prompt as a cache-marked content block array. */
+export function systemBlocks(): Anthropic.TextBlockParam[] {
+  return [{ type: "text", text: SYSTEM_PROMPT, cache_control: EPHEMERAL_CACHE }];
+}
+
+// Block types that accept a cache_control marker. Thinking/redacted-thinking
+// blocks do not — they never appear in our payloads (no thinking param, only
+// custom client-side tools), but the guard keeps this total instead of
+// trusting that invariant forever.
+const CACHEABLE_BLOCK_TYPES = new Set(["text", "image", "tool_use", "tool_result", "document"]);
+
+/** Non-mutating: returns the request's message array with the moving cache
+ * breakpoint on the final content block. Only the returned copies carry the
+ * marker — the loop's own messages array stays clean, so breakpoints never
+ * accumulate across rounds (the API allows at most 4 per request). */
+export function messagesWithCacheBreakpoint(
+  messages: Anthropic.MessageParam[],
+): Anthropic.MessageParam[] {
+  const last = messages[messages.length - 1];
+  if (!last) return messages;
+  const blocks: Anthropic.ContentBlockParam[] =
+    typeof last.content === "string"
+      ? [{ type: "text", text: last.content }]
+      : [...last.content];
+  const finalBlock = blocks[blocks.length - 1];
+  if (!finalBlock || !CACHEABLE_BLOCK_TYPES.has(finalBlock.type)) return messages;
+  // Cast: the runtime guard above establishes what the type system can't —
+  // spread over the full ContentBlockParam union trips on the thinking
+  // variants, which are excluded by the Set check.
+  blocks[blocks.length - 1] = {
+    ...finalBlock,
+    cache_control: EPHEMERAL_CACHE,
+  } as Anthropic.ContentBlockParam;
+  return [...messages.slice(0, -1), { role: last.role, content: blocks }];
+}
+
 export interface ToolCallRecord {
   name: string;
   input: unknown;
