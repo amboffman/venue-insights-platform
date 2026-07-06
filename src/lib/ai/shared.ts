@@ -73,9 +73,7 @@ export function messagesWithCacheBreakpoint(
   const last = messages[messages.length - 1];
   if (!last) return messages;
   const blocks: Anthropic.ContentBlockParam[] =
-    typeof last.content === "string"
-      ? [{ type: "text", text: last.content }]
-      : [...last.content];
+    typeof last.content === "string" ? [{ type: "text", text: last.content }] : [...last.content];
   const finalBlock = blocks[blocks.length - 1];
   if (!finalBlock || !CACHEABLE_BLOCK_TYPES.has(finalBlock.type)) return messages;
   // Cast: the runtime guard above establishes what the type system can't —

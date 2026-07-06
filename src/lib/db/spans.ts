@@ -112,9 +112,10 @@ export async function listTurnSummaries(db: Database, limit = 50): Promise<TurnS
     .limit(limit);
 
   // Scoped to the roots actually shown: unscoped, this grouped EVERY
-  // execute_tool span ever recorded (the table only grows — see
-  // deleteSpansOlderThan) to serve a fixed 50-row page. inArray keeps it on
-  // the trace_id index and bounded by `limit` regardless of table size.
+  // execute_tool span ever recorded (the table grows until the retention
+  // purge — see deleteExpiredSpans) to serve a fixed 50-row page. inArray
+  // keeps it on the trace_id index and bounded by `limit` regardless of
+  // table size.
   const traceIds = roots.map((row) => row.traceId);
   const toolCounts =
     traceIds.length === 0
@@ -167,9 +168,7 @@ export async function listEvalRunSummaries(
       totalDurationMs: sql<number>`coalesce(sum(${spans.durationMs}), 0)`.mapWith(Number),
     })
     .from(spans)
-    .where(
-      and(isNull(spans.parentSpanId), sql`${runId} is not null`, gte(spans.startedAt, floor)),
-    )
+    .where(and(isNull(spans.parentSpanId), sql`${runId} is not null`, gte(spans.startedAt, floor)))
     .groupBy(runId)
     .orderBy(desc(sql`min(${spans.startedAt})`))
     .limit(limit);
@@ -190,10 +189,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * from the observability page (the same piggyback pattern as the
  * rate-limit purge) — cheap when there is nothing to delete because
  * started_at is indexed. */
-export async function deleteExpiredSpans(
-  db: Database,
-  now: Date = new Date(),
-): Promise<void> {
+export async function deleteExpiredSpans(db: Database, now: Date = new Date()): Promise<void> {
   const cutoff = new Date(now.getTime() - SPAN_RETENTION_DAYS * DAY_MS);
   await db.delete(spans).where(lt(spans.startedAt, cutoff));
 }
