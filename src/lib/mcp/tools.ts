@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { Database } from "../db/client";
+import { isCalendarDate } from "../dates";
 import {
   aggregateMetrics,
   compareLocations,
@@ -19,17 +20,9 @@ const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "must be an ISO date (YYYY-MM-DD)")
   // The regex alone admits impossible dates (2026-06-31), which would reach
-  // Postgres and come back as an opaque driver error; a Date.UTC round-trip
-  // rejects them here, where the model gets a clean self-correctable message.
-  .refine((value) => {
-    const [year, month, day] = value.split("-").map(Number);
-    const date = new Date(Date.UTC(year!, month! - 1, day!));
-    return (
-      date.getUTCFullYear() === year &&
-      date.getUTCMonth() === month! - 1 &&
-      date.getUTCDate() === day
-    );
-  }, "must be a real calendar date");
+  // Postgres and come back as an opaque driver error; isCalendarDate rejects
+  // them here, where the model gets a clean self-correctable message.
+  .refine(isCalendarDate, "must be a real calendar date");
 
 const brandSlug = z.enum(BRAND_SLUGS as [string, ...string[]]).describe("Brand identifier (slug)");
 
@@ -94,16 +87,24 @@ const aggregateMetricsTool = defineTool({
     DATA_WINDOW +
     "Coming-soon locations have no metrics; closed locations stopped " +
     "reporting partway through the window.",
-  inputSchema: z.object({
-    from: isoDate.describe("Range start (inclusive)"),
-    to: isoDate.describe("Range end (inclusive)"),
-    brandSlug: brandSlug.optional(),
-    locationIds: z
-      .array(z.number().int())
-      .min(1)
-      .optional()
-      .describe("Specific location ids; omit entirely to include all locations"),
-  }),
+  inputSchema: z
+    .object({
+      from: isoDate.describe("Range start (inclusive)"),
+      to: isoDate.describe("Range end (inclusive)"),
+      brandSlug: brandSlug.optional(),
+      locationIds: z
+        .array(z.number().int())
+        .min(1)
+        .optional()
+        .describe("Specific location ids; omit entirely to include all locations"),
+    })
+    // A swapped range matches zero rows and would come back as a plausible-
+    // looking $0 total; reject it so the model can self-correct instead.
+    // (ISO strings compare correctly as strings.)
+    .refine((value) => value.from <= value.to, {
+      error: "from must be on or before to",
+      path: ["from"],
+    }),
   handler: (db, input) => aggregateMetrics(db, input),
 });
 
@@ -116,14 +117,24 @@ const compareLocationsTool = defineTool({
     "includes each location's LIFETIME average review rating — ratings are " +
     "not limited to the date range. " +
     DATA_WINDOW,
-  inputSchema: z.object({
-    locationIds: z
-      .array(z.number().int())
-      .min(2)
-      .describe("Numeric location ids from search_locations"),
-    from: isoDate.describe("Range start (inclusive)"),
-    to: isoDate.describe("Range end (inclusive)"),
-  }),
+  inputSchema: z
+    .object({
+      locationIds: z
+        .array(z.number().int())
+        .min(2)
+        // min(2) alone passes [7, 7], which inArray collapses into a
+        // degenerate one-row "comparison" with no signal anything was off.
+        .refine((ids) => new Set(ids).size >= 2, {
+          error: "need at least two distinct location ids",
+        })
+        .describe("Numeric location ids from search_locations"),
+      from: isoDate.describe("Range start (inclusive)"),
+      to: isoDate.describe("Range end (inclusive)"),
+    })
+    .refine((value) => value.from <= value.to, {
+      error: "from must be on or before to",
+      path: ["from"],
+    }),
   handler: (db, input) => compareLocations(db, input),
 });
 

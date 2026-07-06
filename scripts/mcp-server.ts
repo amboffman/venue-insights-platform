@@ -17,6 +17,7 @@ import { config } from "dotenv";
 
 import { closeDb, getDb } from "../src/lib/db/client";
 import { buildMcpServer } from "../src/lib/mcp/server";
+import { getToolSpecs } from "../src/lib/mcp/tools";
 
 // Resolve .env.local relative to THIS FILE, not cwd — MCP clients launch
 // servers from arbitrary working directories.
@@ -50,7 +51,7 @@ async function main(): Promise<void> {
   process.stdin.once("close", shutdown);
 
   await server.connect(new StdioServerTransport());
-  console.error("venue-insights MCP server listening on stdio (4 tools)");
+  console.error(`venue-insights MCP server listening on stdio (${getToolSpecs().length} tools)`);
 }
 
 main().catch((error: unknown) => {
