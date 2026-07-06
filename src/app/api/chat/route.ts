@@ -12,8 +12,17 @@ import { MAX_CHAT_TURNS, MAX_TURN_CHARS, formatViewContext } from "@/lib/types/c
 
 // postgres-js needs Node APIs — this route cannot run on the edge runtime.
 export const runtime = "nodejs";
-// Streaming answers with tool round-trips can exceed Vercel's default limit.
-export const maxDuration = 60;
+// Headroom for multi-round tool turns. Vercel kills the function at this
+// wall with no terminal event and no telemetry flush, so it must comfortably
+// exceed a worst-case turn (8 rounds × CHAT_MAX_TOKENS + DB latency); 300s
+// is the platform default ceiling on all plans since Fluid Compute.
+export const maxDuration = 300;
+
+// Chat answers are grounded rollups — a few paragraphs plus tool calls, not
+// 16k-token essays. A smaller per-round budget bounds worst-case wall clock
+// (and worst-case spend) without touching DEFAULT_MAX_TOKENS, which the
+// terminal harness and evals still use.
+const CHAT_MAX_TOKENS = 4096;
 
 // ── public-endpoint cost protection (ADR-0007) ──────────────────────────
 // This route spends real money per request, so it is gated twice: a per-IP
@@ -31,7 +40,11 @@ const RATE_LIMIT_WINDOW_MS = envInt("CHAT_RATE_LIMIT_WINDOW_MINUTES", 10) * 60_0
 const DAILY_BUDGET_MICROUSD = envInt("CHAT_DAILY_BUDGET_MICROUSD", 2_000_000);
 
 /** First hop of x-forwarded-for — set by Vercel's proxy, not the client,
- * so it is trustworthy on the platform we deploy to. */
+ * so it is trustworthy on the platform we deploy to. The "unknown" fallback
+ * only fires on hosts that set no proxy headers at all; every such caller
+ * then shares ONE rate-limit bucket (8 req/window collectively). Acceptable
+ * fail-closed default for a cost-gated demo — raise CHAT_RATE_LIMIT_MAX if
+ * running somewhere without proxy headers. */
 function clientIp(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
   return forwarded?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
@@ -83,6 +96,17 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  // Fail fast on the one env var this route cannot work without. Checked
+  // before the paid gates: constructing the SDK client without a key used
+  // to throw AFTER the request had already burned a rate-limit slot and
+  // 2-3 DB roundtrips, then surfaced as an anonymous 500.
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return Response.json(
+      { error: "Server is missing ANTHROPIC_API_KEY — set it and redeploy." },
+      { status: 503 },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
@@ -144,7 +168,7 @@ export async function POST(request: Request) {
     promptTurns,
     // Client disconnect aborts the in-flight Anthropic request instead of
     // letting it stream (and bill) to completion.
-    { signal: request.signal },
+    { signal: request.signal, maxTokens: CHAT_MAX_TOKENS },
   );
 
   return new Response(eventsToNdjsonStream(withTelemetryFlush(events)), {

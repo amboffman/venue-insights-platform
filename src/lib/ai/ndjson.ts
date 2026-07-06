@@ -34,11 +34,17 @@ export function eventsToNdjsonStream(
         }
       }
     },
-    cancel() {
+    async cancel() {
       // Client disconnected — stop the loop instead of burning tokens. (The
       // route also aborts the in-flight API request via request.signal.)
+      // RETURNING the promise matters: the generator's finally chain ends
+      // the turn span and awaits the telemetry flush, and a serverless
+      // function may freeze the moment cancellation settles. Fire-and-forget
+      // here silently dropped abandoned turns' spans (and their cost) on
+      // deploys — the one path where route.ts's "runs on abandonment too"
+      // guarantee didn't actually hold.
       cancelled = true;
-      void events.return(undefined);
+      await events.return(undefined);
     },
   });
 }

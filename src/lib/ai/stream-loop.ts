@@ -165,14 +165,16 @@ export async function* streamAnswer(
       );
 
       // Announce every call up front, execute them concurrently (read-only
-      // queries), then report results in block order.
+      // queries), then report results in block order. Both events carry the
+      // block's tool_use id so the client pairs result to call exactly.
       for (const block of toolUseBlocks) {
-        yield { type: "tool_start", name: block.name, input: block.input };
+        yield { type: "tool_start", id: block.id, name: block.name, input: block.input };
       }
       const executed = await executeToolUses(deps.db, toolUseBlocks, ctx);
-      for (const { record } of executed) {
+      for (const { record, resultBlock } of executed) {
         yield {
           type: "tool_result",
+          id: resultBlock.tool_use_id,
           name: record.name,
           ok: record.ok,
           ...(record.ok ? { output: record.output } : { error: record.error }),
