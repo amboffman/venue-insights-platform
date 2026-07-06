@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 
 import {
   ATTR_GEN_AI_USAGE_INPUT_TOKENS,
@@ -111,11 +111,19 @@ export async function listTurnSummaries(db: Database, limit = 50): Promise<TurnS
     .orderBy(desc(spans.startedAt))
     .limit(limit);
 
-  const toolCounts = await db
-    .select({ traceId: spans.traceId, toolCalls: count() })
-    .from(spans)
-    .where(sql`${spans.name} like 'execute_tool %'`)
-    .groupBy(spans.traceId);
+  // Scoped to the roots actually shown: unscoped, this grouped EVERY
+  // execute_tool span ever recorded (the table only grows — see
+  // deleteSpansOlderThan) to serve a fixed 50-row page. inArray keeps it on
+  // the trace_id index and bounded by `limit` regardless of table size.
+  const traceIds = roots.map((row) => row.traceId);
+  const toolCounts =
+    traceIds.length === 0
+      ? []
+      : await db
+          .select({ traceId: spans.traceId, toolCalls: count() })
+          .from(spans)
+          .where(and(sql`${spans.name} like 'execute_tool %'`, inArray(spans.traceId, traceIds)))
+          .groupBy(spans.traceId);
   const toolsByTrace = new Map(toolCounts.map((row) => [row.traceId, row.toolCalls]));
 
   return roots.map((row) => ({
@@ -134,8 +142,17 @@ export async function listTurnSummaries(db: Database, limit = 50): Promise<TurnS
 }
 
 /** Eval runs, newest first: root spans carrying a run id, grouped and
- * summed in SQL. */
-export async function listEvalRunSummaries(db: Database): Promise<EvalRunSummary[]> {
+ * summed in SQL. Bounded two ways: a started_at floor (indexed) so the
+ * jsonb-extracted run-id filter never walks the full root-span history —
+ * which grows with PUBLIC chat traffic, not eval usage — and a LIMIT on
+ * the grouped output. */
+export async function listEvalRunSummaries(
+  db: Database,
+  options: { limit?: number; now?: Date } = {},
+): Promise<EvalRunSummary[]> {
+  const limit = options.limit ?? 50;
+  const now = options.now ?? new Date();
+  const floor = new Date(now.getTime() - SPAN_RETENTION_DAYS * DAY_MS);
   const runId = attrText(ATTR_MLIP_EVAL_RUN_ID);
   const rows = await db
     .select({
@@ -150,9 +167,33 @@ export async function listEvalRunSummaries(db: Database): Promise<EvalRunSummary
       totalDurationMs: sql<number>`coalesce(sum(${spans.durationMs}), 0)`.mapWith(Number),
     })
     .from(spans)
-    .where(and(isNull(spans.parentSpanId), sql`${runId} is not null`))
+    .where(
+      and(isNull(spans.parentSpanId), sql`${runId} is not null`, gte(spans.startedAt, floor)),
+    )
     .groupBy(runId)
-    .orderBy(desc(sql`min(${spans.startedAt})`));
+    .orderBy(desc(sql`min(${spans.startedAt})`))
+    .limit(limit);
 
   return rows;
+}
+
+// ── retention (ADR-0011) ────────────────────────────────────────────────
+// The spans table was insert-only with no purge anywhere: every public chat
+// turn and every eval case grew it forever, and the observability
+// aggregates re-scanned that whole history per page view. 90 days keeps
+// far more than the demo ever shows (the dashboard displays 50 turns).
+
+export const SPAN_RETENTION_DAYS = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Purge spans older than the retention window. Called opportunistically
+ * from the observability page (the same piggyback pattern as the
+ * rate-limit purge) — cheap when there is nothing to delete because
+ * started_at is indexed. */
+export async function deleteExpiredSpans(
+  db: Database,
+  now: Date = new Date(),
+): Promise<void> {
+  const cutoff = new Date(now.getTime() - SPAN_RETENTION_DAYS * DAY_MS);
+  await db.delete(spans).where(lt(spans.startedAt, cutoff));
 }
