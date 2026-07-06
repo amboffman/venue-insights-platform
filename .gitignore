@@ -24,6 +24,11 @@
 .DS_Store
 *.pem
 
+# private audit/fix reports (working notes, not portfolio docs — the rest
+# of /docs is tracked: ROADMAP, ADRs, writeup are the portfolio)
+/docs/audit-*.md
+/docs/fix-plan-*.md
+
 # local learning log (author's private study notes — never committed)
 /LEARNING.md
 
