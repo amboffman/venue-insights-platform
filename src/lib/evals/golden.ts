@@ -1,3 +1,4 @@
+import { round2 } from "../db/queries";
 import {
   SEED_END_DATE,
   SEED_START_DATE,
@@ -36,11 +37,13 @@ function idsOf(locations: LocationInsert[]): Set<number> {
   return new Set(locations.map((l) => l.id!));
 }
 
-/** Matches the SQL in lib/db: 2-decimal rounded mean, null when unreviewed. */
+/** Matches the SQL in lib/db: 2-decimal rounded mean (round2 IS the query
+ * layer's rounding rule — importing it means the two can never drift), null
+ * when unreviewed. */
 function avgRating(locationId: number): number | null {
   const ratings = seed.reviews.filter((r) => r.locationId === locationId).map((r) => r.rating);
   if (ratings.length === 0) return null;
-  return Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100;
+  return round2(ratings.reduce((a, b) => a + b, 0) / ratings.length);
 }
 
 function revenueFact(label: string, cents: number): ExpectedFact {

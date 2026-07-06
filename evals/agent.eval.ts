@@ -10,7 +10,7 @@ import type { AskDeps } from "@/lib/ai/tool-loop";
 import { closeDb, getDb } from "@/lib/db/client";
 import { buildGoldenCases } from "@/lib/evals/golden";
 import { writeReport } from "@/lib/evals/report";
-import { buildReport, runCase } from "@/lib/evals/runner";
+import { buildReport, runCase, synthesizeMissingResults } from "@/lib/evals/runner";
 import type { CaseResult } from "@/lib/evals/types";
 import { flushTelemetry, initTelemetry } from "@/lib/telemetry/provider";
 
@@ -64,13 +64,25 @@ describe("agent eval", () => {
   }
 
   afterAll(async () => {
-    const report = buildReport(results);
-    const base = writeReport(report);
-    console.log(`\nEval report written to ${base}.md (+ .json)`);
-    console.log(`Telemetry run id: ${runId}`);
-    console.log("Mean scores:", report.summary.meanScores);
-    // Drain pending span exports before the pool closes under them.
-    await flushTelemetry();
-    await closeDb();
+    try {
+      // A vitest timeout fails a case WITHOUT rejecting runCase, so the
+      // catch above never fires and the case would silently vanish from the
+      // report. Diff the golden set against what reported and give every
+      // missing case an error row. The spread also snapshots `results`: a
+      // late-completing case can still push after this line, but it can no
+      // longer mutate the array the report was built from.
+      const complete = [...results, ...synthesizeMissingResults(cases, results)];
+      const report = buildReport(complete);
+      const base = writeReport(report);
+      console.log(`\nEval report written to ${base}.md (+ .json)`);
+      console.log(`Telemetry run id: ${runId}`);
+      console.log("Mean scores:", report.summary.meanScores);
+    } finally {
+      // Teardown must run even when report writing throws — a leaked pool
+      // hangs the worker. Drain pending span exports before the pool closes
+      // under them; a flush failure must not skip closeDb.
+      await flushTelemetry().catch(() => undefined);
+      await closeDb();
+    }
   });
 });
