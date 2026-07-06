@@ -132,6 +132,10 @@ pnpm dev                      # http://localhost:3000
 | `pnpm mcp` | the stdio MCP server ([client setup](docs/mcp-server.md)) |
 | `pnpm seed` | reset + reseed the database (idempotent, deterministic) |
 
+> **Offline builds:** `pnpm build` downloads the Geist fonts from Google
+> Fonts (`next/font/google`) — a network-blocked environment fails at that
+> step until Next's font cache is primed.
+
 ## Project docs
 
 - [`docs/writeup.md`](docs/writeup.md) — the architecture narrative: every major decision, its alternatives, and what it cost

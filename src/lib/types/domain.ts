@@ -7,13 +7,6 @@ export type LocationStatus = "open" | "closed" | "coming_soon";
 
 export type ReviewSource = "google" | "yelp" | "in_app";
 
-export interface Brand {
-  id: number;
-  name: string;
-  slug: string;
-  category: string;
-}
-
 export interface LocationSummary {
   id: number;
   brandId: number;
