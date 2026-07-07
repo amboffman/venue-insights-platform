@@ -19,6 +19,8 @@ import {
 // server is stateless); each submit resends the visible text turns.
 
 interface ToolActivity {
+  /** the API's tool_use id — pairs a result to its exact call */
+  id: string;
   name: string;
   /** null while running */
   ok: boolean | null;
@@ -187,11 +189,20 @@ export function Chat({
   // Nonce-guarded (not deps-array-driven): each signal fires exactly once,
   // even across re-renders with the same object.
   const lastAskNonce = useRef(0);
+  // Owns the in-flight request. Without an abort on unmount, navigating
+  // away mid-answer left the fetch reading (React never rejects a pending
+  // await on unmount), the socket open, and the server's tool loop billing
+  // Anthropic to completion for an answer nobody would see.
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   // Replaces the last (assistant) message with a NEW object — never mutate:
   // updater functions must be pure, and prior state snapshots share the
@@ -204,13 +215,16 @@ export function Chat({
     });
   }
 
+  // Matched by tool_use id, not name: one round can call the same tool
+  // twice, and a name-based match attached results (and failures) to the
+  // wrong call's chip.
   function resolveActivity(
     message: DisplayMessage,
-    name: string,
+    id: string,
     ok: boolean,
     output?: unknown,
   ): DisplayMessage {
-    const index = message.activities.findLastIndex((a) => a.name === name && a.ok === null);
+    const index = message.activities.findIndex((a) => a.id === id && a.ok === null);
     if (index < 0) return message;
     const activities = message.activities.map((activity, i) =>
       i === index ? { ...activity, ok, ...(ok ? { output } : {}) } : activity,
@@ -236,11 +250,17 @@ export function Chat({
     // serverless timeout) — flag it instead of presenting a silent half answer.
     let sawTerminalEvent = false;
 
+    // The streaming guard above means no second send can race this one;
+    // the controller exists so unmount can sever the request.
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(viewContext ? { turns, viewContext } : { turns }),
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) {
         const detail = await response
@@ -258,11 +278,11 @@ export function Chat({
           case "tool_start":
             updateAssistant((m) => ({
               ...m,
-              activities: [...m.activities, { name: event.name, ok: null }],
+              activities: [...m.activities, { id: event.id, name: event.name, ok: null }],
             }));
             break;
           case "tool_result":
-            updateAssistant((m) => resolveActivity(m, event.name, event.ok, event.output));
+            updateAssistant((m) => resolveActivity(m, event.id, event.ok, event.output));
             break;
           case "done":
             sawTerminalEvent = true;
@@ -286,19 +306,27 @@ export function Chat({
         }));
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      updateAssistant((m) => ({ ...m, error: message }));
+      // Deliberate abort (unmount) isn't an error the user needs to see —
+      // and the component is gone anyway.
+      if (!controller.signal.aborted) {
+        const message = error instanceof Error ? error.message : String(error);
+        updateAssistant((m) => ({ ...m, error: message }));
+      }
     } finally {
+      abortRef.current = null;
       setStreaming(false);
     }
   }
 
   // Dashboard "Ask AI" buttons submit through here; runs after render so
-  // send() sees current state. Ignored while a stream is in flight.
+  // send() sees current state. The nonce is consumed even when a stream is
+  // in flight — consuming it AND sending were previously coupled, so a
+  // click during an answer wasn't ignored but silently queued, firing a
+  // paid, unprompted question the moment the stream finished.
   useEffect(() => {
-    if (askSignal && askSignal.nonce !== lastAskNonce.current && !streaming) {
+    if (askSignal && askSignal.nonce !== lastAskNonce.current) {
       lastAskNonce.current = askSignal.nonce;
-      void send(askSignal.question);
+      if (!streaming) void send(askSignal.question);
     }
   });
 

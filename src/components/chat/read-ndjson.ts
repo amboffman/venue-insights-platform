@@ -5,6 +5,24 @@ import type { ChatStreamEvent } from "@/lib/types/chat";
 // JSON line can be split across reads — so lines are only parsed once a
 // newline lands in the buffer.
 
+/** One line → one event, defensively. A proxy-injected fragment, a
+ * truncated flush, or a valid-JSON-but-not-an-event line (`null`) used to
+ * throw out of the generator and kill the whole stream — discarding every
+ * valid event still buffered behind it, including `done`. A bad line is
+ * skipped instead; a genuinely severed stream is still reported by the
+ * caller's saw-terminal-event check. */
+function parseEventLine(line: string): ChatStreamEvent | null {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    if (typeof parsed === "object" && parsed !== null && "type" in parsed) {
+      return parsed as ChatStreamEvent;
+    }
+  } catch {
+    /* not JSON — skip */
+  }
+  return null;
+}
+
 export async function* readNdjsonEvents(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<ChatStreamEvent> {
@@ -20,7 +38,10 @@ export async function* readNdjsonEvents(
       while (newlineIndex >= 0) {
         const line = buffer.slice(0, newlineIndex).trim();
         buffer = buffer.slice(newlineIndex + 1);
-        if (line) yield JSON.parse(line) as ChatStreamEvent;
+        if (line) {
+          const event = parseEventLine(line);
+          if (event) yield event;
+        }
         newlineIndex = buffer.indexOf("\n");
       }
     }
@@ -28,7 +49,10 @@ export async function* readNdjsonEvents(
     // chunk boundary is still buffered inside it.
     buffer += decoder.decode();
     const tail = buffer.trim();
-    if (tail) yield JSON.parse(tail) as ChatStreamEvent;
+    if (tail) {
+      const event = parseEventLine(tail);
+      if (event) yield event;
+    }
   } finally {
     // Cancel (not just release): if the consumer exits early, this tears the
     // HTTP body down so the server's stream cancel fires and the tool loop

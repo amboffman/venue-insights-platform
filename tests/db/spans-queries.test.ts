@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  SPAN_RETENTION_DAYS,
+  deleteExpiredSpans,
   insertSpans,
   listEvalRunSummaries,
   listTurnSummaries,
@@ -145,7 +147,10 @@ describe("span dashboard queries", () => {
   });
 
   it("aggregates eval runs across their case turns", async () => {
-    const runs = await listEvalRunSummaries(seeded.db);
+    // Explicit `now`: the query floors at the retention window, and the
+    // fixtures are pinned to 2026-07-03 — a wall-clock default would make
+    // this test start failing ~90 days after that date.
+    const runs = await listEvalRunSummaries(seeded.db, { now: new Date("2026-07-03T23:00:00Z") });
 
     expect(runs).toHaveLength(1);
     const run = runs[0]!;
@@ -156,5 +161,23 @@ describe("span dashboard queries", () => {
     expect(run.totalCostMicroUsd).toBe(1050); // missing cost sums as 0
     expect(run.totalDurationMs).toBe(3500); // 2000 + 1500
     expect(run.startedAt.toISOString()).toBe("2026-07-03T11:00:00.000Z");
+  });
+
+  it("purges only spans older than the retention window", async () => {
+    // Runs LAST — it mutates the shared fixture set. An expired span (past
+    // the window relative to `now`) plus the 2026-07-03 fixtures: the purge
+    // must remove exactly the expired one.
+    const TRACE_OLD = "d".repeat(32);
+    const now = new Date("2026-07-03T23:00:00Z");
+    const expired = new Date(now.getTime() - (SPAN_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000);
+    await insertSpans(seeded.db, [
+      span({ traceId: TRACE_OLD, name: "mlip.chat_turn", startedAt: expired }),
+    ]);
+
+    await deleteExpiredSpans(seeded.db, now);
+
+    const turns = await listTurnSummaries(seeded.db);
+    expect(turns.map((t) => t.traceId)).not.toContain(TRACE_OLD);
+    expect(turns).toHaveLength(3); // the three 2026-07-03 fixtures survive
   });
 });

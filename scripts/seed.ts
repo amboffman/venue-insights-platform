@@ -27,5 +27,7 @@ main()
     process.exitCode = 1;
   })
   // Close the pool and let the process exit naturally — a hard process.exit
-  // can truncate stdout still buffered in a pipe on Windows.
-  .finally(() => closeDb());
+  // can truncate stdout still buffered in a pipe on Windows. The close is
+  // swallowed on failure: returning its rejection from finally() would turn
+  // a successful seed into an unhandled-rejection crash.
+  .finally(() => closeDb().catch(() => undefined));

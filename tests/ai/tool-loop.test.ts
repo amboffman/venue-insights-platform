@@ -143,6 +143,21 @@ describe("askQuestion", () => {
     expect(requests[1]!.messages[1]!.role).toBe("assistant");
   });
 
+  it("does not duplicate the final pause's text when the pause cap is hit", async () => {
+    // 10 pause responses > MAX_PAUSE_ROUNDS (8): the loop exits ON a pause.
+    // That last pause's text is already folded into pausedText — the old
+    // code appended it a second time.
+    const pauses = Array.from({ length: 10 }, (_, i) =>
+      message([textBlock(`fragment ${i}`)], "pause_turn"),
+    );
+    const { client } = fakeClient(pauses);
+
+    const result = await askQuestion({ client, db }, "Pause forever");
+
+    const lastFragment = /fragment 8/g;
+    expect(result.answer.match(lastFragment)).toHaveLength(1);
+  });
+
   it("does not execute tools requested on the final permitted round", async () => {
     const { client } = fakeClient([
       message([toolUseBlock("tu_1", "search_locations", {})], "tool_use"),

@@ -11,6 +11,10 @@ export const ATTR_GEN_AI_REQUEST_MODEL = "gen_ai.request.model";
 export const ATTR_GEN_AI_RESPONSE_FINISH_REASONS = "gen_ai.response.finish_reasons";
 export const ATTR_GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens";
 export const ATTR_GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens";
+// Cache token counts are not yet in the gen_ai semconv registry; named in
+// its style so they can migrate if/when it standardizes them.
+export const ATTR_GEN_AI_USAGE_CACHE_READ_TOKENS = "gen_ai.usage.cache_read_input_tokens";
+export const ATTR_GEN_AI_USAGE_CACHE_WRITE_TOKENS = "gen_ai.usage.cache_creation_input_tokens";
 export const ATTR_GEN_AI_TOOL_NAME = "gen_ai.tool.name";
 
 // Root-span names — shared by the loops (producers) and the budget gate /

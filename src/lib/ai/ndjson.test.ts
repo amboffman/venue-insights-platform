@@ -35,4 +35,28 @@ describe("eventsToNdjsonStream", () => {
     expect(lines).toHaveLength(2);
     expect(JSON.parse(lines[1]!)).toEqual({ type: "error", message: "boom" });
   });
+
+  it("cancel() settles only after the generator's finally chain completes", async () => {
+    // The abandonment path (client disconnect) must AWAIT the generator's
+    // teardown: that finally chain is where the turn span ends and telemetry
+    // flushes, and a serverless function can freeze the moment cancellation
+    // settles. This pins the ordering: teardown first, then cancel resolves.
+    const order: string[] = [];
+    async function* slowTeardown(): AsyncGenerator<ChatStreamEvent> {
+      try {
+        yield { type: "text_delta", text: "first" };
+        yield { type: "text_delta", text: "never read" };
+      } finally {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        order.push("teardown finished");
+      }
+    }
+
+    const reader = eventsToNdjsonStream(slowTeardown()).getReader();
+    await reader.read(); // consume one event so the generator is mid-flight
+    await reader.cancel();
+    order.push("cancel settled");
+
+    expect(order).toEqual(["teardown finished", "cancel settled"]);
+  });
 });

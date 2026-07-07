@@ -68,7 +68,12 @@ export function MonthlyRevenueLine({ data }: { data: MonthlyRevenue[] }) {
     moveTo(Math.round(((px - PAD.left) / plotW) * lastIndex));
   }
 
-  const hovered = hoverIndex === null ? null : data[hoverIndex]!;
+  // hoverIndex survives re-renders, so a filter change that SHRINKS the data
+  // can leave it pointing past the new end (data[hoverIndex] === undefined,
+  // crosshair off-canvas). Clamp at render time instead of resetting in an
+  // effect: derived state needs no extra render and can't miss an update.
+  const safeHoverIndex = hoverIndex === null ? null : Math.min(hoverIndex, lastIndex);
+  const hovered = safeHoverIndex === null ? null : data[safeHoverIndex]!;
 
   return (
     <div className="relative">
@@ -83,8 +88,10 @@ export function MonthlyRevenueLine({ data }: { data: MonthlyRevenue[] }) {
         onPointerLeave={() => setHoverIndex(null)}
         onKeyDown={(e) => {
           // Keyboard gets the same readout as hover (interaction rule).
-          if (e.key === "ArrowRight") moveTo((hoverIndex ?? -1) + 1);
-          if (e.key === "ArrowLeft") moveTo((hoverIndex ?? data.length) - 1);
+          // Step from the CLAMPED index so arrows continue from the point
+          // actually shown, even after the data shrank under the cursor.
+          if (e.key === "ArrowRight") moveTo((safeHoverIndex ?? -1) + 1);
+          if (e.key === "ArrowLeft") moveTo((safeHoverIndex ?? data.length) - 1);
           if (e.key === "Escape") setHoverIndex(null);
         }}
       >
@@ -119,10 +126,10 @@ export function MonthlyRevenueLine({ data }: { data: MonthlyRevenue[] }) {
             ),
         )}
 
-        {hoverIndex !== null && (
+        {safeHoverIndex !== null && (
           <line
-            x1={x(hoverIndex)}
-            x2={x(hoverIndex)}
+            x1={x(safeHoverIndex)}
+            x2={x(safeHoverIndex)}
             y1={PAD.top}
             y2={PAD.top + plotH}
             strokeWidth={1}
@@ -139,9 +146,9 @@ export function MonthlyRevenueLine({ data }: { data: MonthlyRevenue[] }) {
           className="stroke-[#2a78d6] dark:stroke-[#3987e5]"
         />
 
-        {hoverIndex !== null && hoverIndex !== lastIndex && hovered && (
+        {safeHoverIndex !== null && safeHoverIndex !== lastIndex && hovered && (
           <circle
-            cx={x(hoverIndex)}
+            cx={x(safeHoverIndex)}
             cy={y(hovered.revenueCents)}
             r={4.5}
             strokeWidth={2}
@@ -166,10 +173,10 @@ export function MonthlyRevenueLine({ data }: { data: MonthlyRevenue[] }) {
         </text>
       </svg>
 
-      {hovered && hoverIndex !== null && (
+      {hovered && safeHoverIndex !== null && (
         <div
           className="pointer-events-none absolute top-0 z-10 rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-sm"
-          style={{ left: `${(x(hoverIndex) / W) * 100}%`, transform: "translateX(-50%)" }}
+          style={{ left: `${(x(safeHoverIndex) / W) * 100}%`, transform: "translateX(-50%)" }}
         >
           {/* values lead, labels follow */}
           <div className="font-semibold">{formatMoneyExact(hovered.revenueCents)}</div>
@@ -178,6 +185,16 @@ export function MonthlyRevenueLine({ data }: { data: MonthlyRevenue[] }) {
           </div>
         </div>
       )}
+
+      {/* The tooltip above is pointer-events-none and visual-only, so the
+          keyboard readout is inaudible to assistive tech. Mirror it into a
+          visually-hidden live region; the region stays mounted (empty when
+          nothing is hovered) so screen readers reliably announce changes. */}
+      <div aria-live="polite" className="sr-only">
+        {hovered
+          ? `${monthLabel(hovered.month)} ${hovered.month.slice(0, 4)}: ${formatMoneyExact(hovered.revenueCents)}`
+          : null}
+      </div>
     </div>
   );
 }

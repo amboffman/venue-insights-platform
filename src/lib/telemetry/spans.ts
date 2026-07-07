@@ -13,6 +13,8 @@ import {
   ATTR_GEN_AI_REQUEST_MODEL,
   ATTR_GEN_AI_RESPONSE_FINISH_REASONS,
   ATTR_GEN_AI_TOOL_NAME,
+  ATTR_GEN_AI_USAGE_CACHE_READ_TOKENS,
+  ATTR_GEN_AI_USAGE_CACHE_WRITE_TOKENS,
   ATTR_GEN_AI_USAGE_INPUT_TOKENS,
   ATTR_GEN_AI_USAGE_OUTPUT_TOKENS,
   ATTR_MLIP_COST_MICROUSD,
@@ -55,10 +57,24 @@ export function endTurnSpan(span: Span, outcome: TurnOutcome): void {
     [ATTR_MLIP_ITERATIONS]: outcome.iterations,
     [ATTR_GEN_AI_USAGE_INPUT_TOKENS]: outcome.inputTokens,
     [ATTR_GEN_AI_USAGE_OUTPUT_TOKENS]: outcome.outputTokens,
+    ...cacheTokenAttributes(outcome),
   });
   const cost = estimateCostMicroUsd(outcome.model, outcome);
   if (cost !== null) span.setAttribute(ATTR_MLIP_COST_MICROUSD, cost);
   span.end();
+}
+
+/** Cache tokens bill at different rates than plain input (cost.ts), so the
+ * dashboard needs them separated; omitted entirely when caching never fired
+ * to keep old spans and new spans shaped alike. */
+function cacheTokenAttributes(usage: TokenUsage): Attributes {
+  const read = usage.cacheReadInputTokens ?? 0;
+  const write = usage.cacheCreationInputTokens ?? 0;
+  if (read === 0 && write === 0) return {};
+  return {
+    [ATTR_GEN_AI_USAGE_CACHE_READ_TOKENS]: read,
+    [ATTR_GEN_AI_USAGE_CACHE_WRITE_TOKENS]: write,
+  };
 }
 
 /** One Claude API round-trip (GenAI semconv "chat" operation). */
@@ -85,6 +101,7 @@ export function endClaudeCallSpan(span: Span, outcome: ClaudeCallOutcome): void 
   span.setAttributes({
     [ATTR_GEN_AI_USAGE_INPUT_TOKENS]: outcome.inputTokens,
     [ATTR_GEN_AI_USAGE_OUTPUT_TOKENS]: outcome.outputTokens,
+    ...cacheTokenAttributes(outcome),
     ...(outcome.stopReason === null
       ? {}
       : { [ATTR_GEN_AI_RESPONSE_FINISH_REASONS]: [outcome.stopReason] }),

@@ -23,9 +23,14 @@ export function formatTokens(value: number): string {
 
 export function formatDurationMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
-  const minutes = Math.floor(ms / 60_000);
-  const seconds = Math.round((ms % 60_000) / 1000);
+  // Round to whole seconds ONCE, then pick the branch from the rounded
+  // value. Rounding inside the minutes branch could yield "1m 60s"
+  // (119,500ms), and branching on raw ms let 59,950ms render as "60.0 s"
+  // instead of crossing into the minutes format.
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${(ms / 1000).toFixed(1)} s`;
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
   return `${minutes}m ${seconds}s`;
 }
 

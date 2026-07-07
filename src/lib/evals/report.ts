@@ -29,13 +29,13 @@ export function reportToMarkdown(report: EvalReport): string {
     "",
     "## Cases",
     "",
-    "| case | tools | args | grounded | round-trips | ms |",
-    "| --- | --- | --- | --- | --- | --- |",
+    "| case | tools | args | grounded | facts | round-trips | ms |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
     ...report.cases.map(
       (c) =>
         `| ${c.caseId} | ${cell(c.scores.toolSelection)} | ` +
         `${cell(c.scores.argumentCorrectness)} | ${cell(c.scores.groundedness)} | ` +
-        `${c.iterations} | ${c.durationMs} |`,
+        `${cell(c.scores.facts)} | ${c.iterations} | ${c.durationMs} |`,
     ),
     "",
     "## Failures",

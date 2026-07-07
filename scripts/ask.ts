@@ -48,5 +48,6 @@ main()
     process.exitCode = 1;
   })
   // Close the pool and exit naturally — process.exit can truncate stdout
-  // still buffered in a pipe on Windows.
-  .finally(() => closeDb());
+  // still buffered in a pipe on Windows. Swallow close failures: they must
+  // not crash a run whose answer already printed.
+  .finally(() => closeDb().catch(() => undefined));

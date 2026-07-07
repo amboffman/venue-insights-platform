@@ -26,7 +26,7 @@ describe("readNdjsonEvents", () => {
       streamOfChunks([
         '{"type":"text_de',
         'lta","text":"Hel',
-        'lo"}\n{"type":"text_delta","text":"!"}\n{"type":"tool_start",',
+        'lo"}\n{"type":"text_delta","text":"!"}\n{"type":"tool_start","id":"tu_1",',
         '"name":"search_locations","input":{}}\n',
       ]),
     );
@@ -34,12 +34,37 @@ describe("readNdjsonEvents", () => {
     expect(events).toEqual([
       { type: "text_delta", text: "Hello" },
       { type: "text_delta", text: "!" },
-      { type: "tool_start", name: "search_locations", input: {} },
+      { type: "tool_start", id: "tu_1", name: "search_locations", input: {} },
     ]);
   });
 
   it("parses a final line that has no trailing newline", async () => {
     const events = await collect(streamOfChunks(['{"type":"error","message":"cut off"}']));
     expect(events).toEqual([{ type: "error", message: "cut off" }]);
+  });
+
+  it("skips malformed or non-event lines instead of killing the stream", async () => {
+    // A proxy-injected HTML fragment, a bare JSON null, then a valid done —
+    // everything after the garbage must still arrive.
+    const events = await collect(
+      streamOfChunks([
+        '{"type":"text_delta","text":"Hi"}\n',
+        "<html>502 Bad Gateway</html>\n",
+        "null\n",
+        '{"type":"done","usage":{"inputTokens":1,"outputTokens":2},"stopReason":"end_turn"}\n',
+      ]),
+    );
+
+    expect(events).toEqual([
+      { type: "text_delta", text: "Hi" },
+      { type: "done", usage: { inputTokens: 1, outputTokens: 2 }, stopReason: "end_turn" },
+    ]);
+  });
+
+  it("skips a malformed tail with no trailing newline", async () => {
+    const events = await collect(
+      streamOfChunks(['{"type":"text_delta","text":"Hi"}\n{"type":"done","usa']),
+    );
+    expect(events).toEqual([{ type: "text_delta", text: "Hi" }]);
   });
 });

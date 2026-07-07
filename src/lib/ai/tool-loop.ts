@@ -15,9 +15,10 @@ import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_MAX_TOOL_ITERATIONS,
   DEFAULT_MODEL,
-  SYSTEM_PROMPT,
   anthropicTools,
   executeToolUses,
+  messagesWithCacheBreakpoint,
+  systemBlocks,
   type ToolCallRecord,
 } from "./shared";
 
@@ -82,6 +83,7 @@ export async function askQuestion(
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: question }];
   const toolCalls: ToolCallRecord[] = [];
   const usage = { inputTokens: 0, outputTokens: 0 };
+  const cacheUsage = { cacheReadInputTokens: 0, cacheCreationInputTokens: 0 };
 
   let response: Anthropic.Message | null = null;
   let iterations = 0;
@@ -102,9 +104,9 @@ export async function askQuestion(
         response = await deps.client.messages.create({
           model,
           max_tokens: maxTokens,
-          system: SYSTEM_PROMPT,
+          system: systemBlocks(),
           tools,
-          messages,
+          messages: messagesWithCacheBreakpoint(messages),
         });
       } catch (error) {
         failSpan(callSpan, error);
@@ -114,10 +116,14 @@ export async function askQuestion(
         model,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
+        cacheReadInputTokens: response.usage.cache_read_input_tokens ?? 0,
+        cacheCreationInputTokens: response.usage.cache_creation_input_tokens ?? 0,
         stopReason: response.stop_reason,
       });
       usage.inputTokens += response.usage.input_tokens;
       usage.outputTokens += response.usage.output_tokens;
+      cacheUsage.cacheReadInputTokens += response.usage.cache_read_input_tokens ?? 0;
+      cacheUsage.cacheCreationInputTokens += response.usage.cache_creation_input_tokens ?? 0;
 
       // Server-side pause: append the assistant turn as-is and let the API
       // resume where it left off.
@@ -151,7 +157,13 @@ export async function askQuestion(
       messages.push({ role: "user", content: executed.map((e) => e.resultBlock) });
     }
 
-    const answer = pausedText + (response ? textOf(response.content) : "");
+    // When the loop exits ON the pause cap, the final response's text was
+    // already folded into pausedText by the pause branch — appending
+    // textOf(response.content) again would duplicate it.
+    const endedOnPause = response?.stop_reason === "pause_turn";
+    const answer = endedOnPause
+      ? pausedText.trimEnd()
+      : pausedText + (response ? textOf(response.content) : "");
 
     return {
       answer,
@@ -166,6 +178,6 @@ export async function askQuestion(
   } finally {
     // Totals land even on the error path; end() is here so no return/throw
     // can leak an open span.
-    endTurnSpan(turnSpan, { model, ...usage, iterations });
+    endTurnSpan(turnSpan, { model, ...usage, ...cacheUsage, iterations });
   }
 }

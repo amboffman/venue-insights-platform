@@ -2,6 +2,7 @@ import { askQuestion, type AskDeps } from "../ai/tool-loop";
 import { DEFAULT_MODEL } from "../ai/shared";
 import { ATTR_MLIP_EVAL_CASE_ID, ATTR_MLIP_EVAL_RUN_ID } from "../telemetry/attributes";
 import { argumentCorrectnessScorer } from "./scorers/argument-correctness";
+import { factsScorer } from "./scorers/facts";
 import { groundednessScorer } from "./scorers/groundedness";
 import { toolSelectionScorer } from "./scorers/tool-selection";
 import type {
@@ -17,6 +18,7 @@ export const SCORERS: Scorer[] = [
   toolSelectionScorer,
   argumentCorrectnessScorer,
   groundednessScorer,
+  factsScorer,
 ];
 
 /** A scorer that throws (e.g. the not-yet-implemented author scorer) must
@@ -67,6 +69,30 @@ export async function runCase(
     iterations: result.iterations,
     stopReason: result.stopReason,
   };
+}
+
+/** A vitest test timeout fails a case WITHOUT rejecting runCase's promise,
+ * so the eval file's catch never runs and no row lands in `results` — the
+ * report's denominator silently shrinks. Diffing the golden set against
+ * what actually reported lets afterAll synthesize an error row (same shape
+ * as a pipeline failure: empty scores, error text) for every missing case
+ * before the report is built. */
+export function synthesizeMissingResults(cases: EvalCase[], results: CaseResult[]): CaseResult[] {
+  const reported = new Set(results.map((r) => r.caseId));
+  return cases
+    .filter((c) => !reported.has(c.id))
+    .map((c) => ({
+      caseId: c.id,
+      question: c.question,
+      answer: "",
+      toolCalls: [],
+      scores: {},
+      usage: { inputTokens: 0, outputTokens: 0 },
+      durationMs: 0,
+      iterations: 0,
+      stopReason: null,
+      error: "case never completed (timeout?)",
+    }));
 }
 
 export function buildReport(unsorted: CaseResult[]): EvalReport {

@@ -30,4 +30,46 @@ describe("estimateCostMicroUsd", () => {
       null,
     );
   });
+
+  it("prices cache writes at 1.25x and cache reads at 0.1x the input rate", () => {
+    // 1000 written → 1000 × 3 × 5/4 = 3750 µ$; 1000 read → 1000 × 3 / 10 = 300 µ$
+    expect(
+      estimateCostMicroUsd("claude-sonnet-5", {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationInputTokens: 1000,
+      }),
+    ).toBe(3750);
+    expect(
+      estimateCostMicroUsd("claude-sonnet-5", {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadInputTokens: 1000,
+      }),
+    ).toBe(300);
+  });
+
+  it("rounds fractional cache costs to whole microdollars", () => {
+    // 1 read token → 0.3 µ$ → rounds to 0; 2 write tokens → 7.5 µ$ → rounds to 8
+    expect(
+      estimateCostMicroUsd("claude-sonnet-5", {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadInputTokens: 1,
+      }),
+    ).toBe(0);
+    expect(
+      estimateCostMicroUsd("claude-sonnet-5", {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationInputTokens: 2,
+      }),
+    ).toBe(8);
+  });
+
+  it("treats absent cache counts as zero (pre-caching spans keep their cost)", () => {
+    expect(estimateCostMicroUsd("claude-sonnet-5", { inputTokens: 1000, outputTokens: 100 })).toBe(
+      4500,
+    );
+  });
 });

@@ -11,6 +11,7 @@ import {
   topLocations,
 } from "@/lib/db/dashboard";
 import { SEED_END_DATE, SEED_START_DATE } from "@/lib/db/seed-data";
+import { isCalendarDate } from "@/lib/dates";
 import type { DashboardViewContext } from "@/lib/types/chat";
 
 // The dashboard IS the homepage: a stakeholder lands on the data, with the
@@ -21,8 +22,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = { title: "Venue Insights — Portfolio dashboard" };
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function first(param: string | string[] | undefined): string | undefined {
   return Array.isArray(param) ? param[0] : param;
@@ -40,10 +39,13 @@ export default async function HomePage({
   // accepted when they exist in the seeded vocabulary.
   const [brands, cities] = await Promise.all([brandOptions(db), cityOptions(db)]);
 
+  // Calendar validity matters, not just shape: a format-valid impostor like
+  // 2026-06-31 would throw inside Postgres and 500 the whole page. Invalid
+  // dates degrade to the seed bounds, exactly like unknown brand/city below.
   const rawFrom = first(sp.from);
   const rawTo = first(sp.to);
-  let from = rawFrom && ISO_DATE.test(rawFrom) ? rawFrom : SEED_START_DATE;
-  let to = rawTo && ISO_DATE.test(rawTo) ? rawTo : SEED_END_DATE;
+  let from = rawFrom && isCalendarDate(rawFrom) ? rawFrom : SEED_START_DATE;
+  let to = rawTo && isCalendarDate(rawTo) ? rawTo : SEED_END_DATE;
   if (from > to) [from, to] = [to, from];
 
   const rawBrand = first(sp.brand);

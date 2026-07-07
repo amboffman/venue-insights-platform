@@ -73,6 +73,49 @@ describe("groundednessScorer (AUTHOR: unskip and implement)", () => {
     expect(millions.score).toBe(1);
   });
 
+  it("expands spelled-out magnitudes ($3.5 million) before matching", () => {
+    // "$3.5 million" is the same claim as "$3.5M" — one decimal of millions,
+    // so ±50,000 of tolerance, not the bare-3.5 reading (±0.05) that would
+    // false-flag a perfectly grounded answer.
+    const result = score("Revenue was $3.5 million for the half.", [
+      { totalRevenueCents: 349987654 },
+    ]);
+    expect(result.score).toBe(1);
+
+    // …and the widened tolerance still catches a genuinely wrong magnitude.
+    const wrong = score("Revenue was $3.5 million for the half.", [
+      { totalRevenueCents: 429987654 },
+    ]);
+    expect(wrong.score).toBe(0);
+    expect(wrong.details.join(" ")).toContain("million");
+
+    const words = score("Costs ran to 12 thousand against a $2 Billion market.", [
+      { costCents: 1204011, marketSizeCents: 200012345678 },
+    ]);
+    expect(words.score).toBe(1);
+  });
+
+  it("reads trailing zeros as rounding — '495,000' is the claim '$495K' makes", () => {
+    // Last-written-digit tolerance gave "495,000" ±0.5 while "$495K" got
+    // ±500 for the same statement; the last NON-ZERO digit is the real
+    // rounding step.
+    const rounded = score("Revenue was roughly $495,000 for the period.", [
+      { totalRevenueCents: 49547911 },
+    ]);
+    expect(rounded.score).toBe(1);
+
+    const coarse = score("About 200 people came through.", [{ totalFootTraffic: 231 }]);
+    expect(coarse.score).toBe(1);
+    const tooFar = score("About 200 people came through.", [{ totalFootTraffic: 300 }]);
+    expect(tooFar.score).toBe(0);
+  });
+
+  it("keeps exact tolerance for integers whose last digit is non-zero", () => {
+    const off = score("They processed 495,481 transactions.", [{ totalTransactions: 495479 }]);
+    expect(off.score).toBe(0);
+    expect(off.details.join(" ")).toContain("495,481");
+  });
+
   it("flags a hallucinated number and names it in details", () => {
     const result = score("Revenue was $495,479.11 across 31,000 transactions.", [
       { totalRevenueCents: 49547911, totalTransactions: 28296 },
@@ -106,6 +149,21 @@ describe("groundednessScorer (AUTHOR: unskip and implement)", () => {
       { totalRevenueCents: 10000 },
     ]);
     expect(result.score).toBe(1);
+  });
+
+  it("does not treat month-name or slash dates as numeric claims", () => {
+    // "June 30, 2026" and "06/30/2026" are the question's time window in
+    // prose — without the exemption their day/month leak as small-integer
+    // claims ("30", "1") that no tool output happens to contain.
+    const monthName = score("Between June 1 and June 30, 2026, revenue was $100.00.", [
+      { totalRevenueCents: 10000 },
+    ]);
+    expect(monthName.score).toBe(1);
+
+    const slash = score("As of 06/30/2026 (and since 6/1), revenue was $100.00.", [
+      { totalRevenueCents: 10000 },
+    ]);
+    expect(slash.score).toBe(1);
   });
 
   it("handles failed tool calls by scoring only against successful outputs", () => {

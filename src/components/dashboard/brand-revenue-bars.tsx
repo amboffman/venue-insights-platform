@@ -15,7 +15,11 @@ export function BrandRevenueBars({ data }: { data: BrandRevenue[] }) {
   const max = Math.max(...data.map((row) => row.revenueCents), 1);
 
   return (
-    <div className="space-y-2" role="img" aria-label="Revenue by brand">
+    // No role="img" here: that would flatten the subtree to its label and
+    // hide the per-brand names/amounts — which are real text nodes — from
+    // screen readers. The visible text already carries all the information;
+    // only the decorative bar divs are silent, and that's correct.
+    <div className="space-y-2">
       {data.map((row) => (
         <div
           key={row.brandSlug}

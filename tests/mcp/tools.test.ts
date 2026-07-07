@@ -109,6 +109,25 @@ describe("runTool", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("rejects duplicate ids that dodge the min-2 rule", async () => {
+    const result = await runTool(db, "compare_locations", {
+      locationIds: [1, 1],
+      from: SEED_START_DATE,
+      to: SEED_END_DATE,
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { error: string }).error).toContain("distinct");
+  });
+
+  it("rejects an inverted date range instead of returning silent zeros", async () => {
+    const result = await runTool(db, "aggregate_metrics", {
+      from: SEED_END_DATE,
+      to: SEED_START_DATE,
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { error: string }).error).toContain("on or before");
+  });
+
   it("returns a structured error for unknown tools, never throws", async () => {
     const result = await runTool(db, "drop_all_tables", {});
     expect(result.ok).toBe(false);
